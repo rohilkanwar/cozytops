@@ -8,7 +8,6 @@ import type {
   GarmentImage,
   GarmentType,
   OrderConfirmation,
-  RenderResponse,
   ShotKind,
 } from "@/lib/types";
 import { AnalyzingView } from "./AnalyzingView";
@@ -32,6 +31,20 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return json as T;
 }
 
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+type StartResponse = {
+  jobId?: string;
+  kind?: ShotKind;
+  alt?: string;
+  unavailable?: boolean;
+};
+type PollResponse = {
+  status: "pending" | "completed" | "failed";
+  src?: string;
+  error?: string;
+};
+
 export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   const [phase, setPhase] = useState<Phase>(initialHandle ? "analyzing" : "idle");
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -54,6 +67,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   const lastHandle = useRef<string | null>(null);
   const startedImages = useRef<Set<GarmentType>>(new Set());
   const imgUnavailableRef = useRef(false);
+  const runId = useRef(0);
 
   // Generates the photoreal shots for a garment, one request at a time so each
   // stays under the serverless timeout; images stream in + are cached per garment.
@@ -64,6 +78,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   ) {
     if (imgUnavailableRef.current || startedImages.current.has(g)) return;
     startedImages.current.add(g);
+    const myRun = runId.current;
     setImgErrors((prev) => ({ ...prev, [g]: undefined }));
 
     const shots: { shot: ShotKind; variant: number }[] = [
@@ -74,11 +89,13 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setImages((prev) => ({ ...prev, [g]: [] }));
     setPending((prev) => ({ ...prev, [g]: shots.length }));
 
-    let got = 0;
     let firstError: string | undefined;
+
+    // 1) Kick off every shot as a background job (each returns an id in ~1s).
+    const jobs: { id: string; kind: ShotKind; alt: string }[] = [];
     for (const { shot, variant } of shots) {
       try {
-        const r = await postJson<RenderResponse>("/api/render", {
+        const r = await postJson<StartResponse>("/api/render/start", {
           design,
           shot,
           variant,
@@ -90,18 +107,52 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
           setPending((prev) => ({ ...prev, [g]: 0 }));
           return;
         }
-        if (r.image) {
-          const img = r.image;
-          got += 1;
-          setImages((prev) => ({ ...prev, [g]: [...(prev[g] ?? []), img] }));
+        if (r.jobId && r.kind && r.alt) {
+          jobs.push({ id: r.jobId, kind: r.kind, alt: r.alt });
         }
       } catch (e) {
         if (!firstError) {
-          firstError = e instanceof Error ? e.message : "Image generation failed.";
+          firstError = e instanceof Error ? e.message : "Failed to start image job.";
         }
       }
-      setPending((prev) => ({ ...prev, [g]: Math.max(0, (prev[g] ?? 1) - 1) }));
     }
+    if (runId.current !== myRun) return;
+    setPending((prev) => ({ ...prev, [g]: jobs.length }));
+    if (jobs.length === 0) {
+      if (firstError) setImgErrors((prev) => ({ ...prev, [g]: firstError }));
+      return;
+    }
+
+    // 2) Poll each job until it resolves; images stream in as they finish.
+    const pendingIds = new Set(jobs.map((j) => j.id));
+    let got = 0;
+    for (let attempt = 0; attempt < 75 && pendingIds.size > 0; attempt++) {
+      await delay(4000);
+      if (runId.current !== myRun) return;
+      for (const job of jobs) {
+        if (!pendingIds.has(job.id)) continue;
+        try {
+          const p = await postJson<PollResponse>("/api/render/poll", { id: job.id });
+          if (p.status === "completed" && p.src) {
+            pendingIds.delete(job.id);
+            got += 1;
+            const src = p.src;
+            setImages((prev) => ({
+              ...prev,
+              [g]: [...(prev[g] ?? []), { kind: job.kind, src, alt: job.alt }],
+            }));
+            setPending((prev) => ({ ...prev, [g]: Math.max(0, (prev[g] ?? 1) - 1) }));
+          } else if (p.status === "failed") {
+            pendingIds.delete(job.id);
+            if (!firstError) firstError = p.error || "Image generation failed.";
+            setPending((prev) => ({ ...prev, [g]: Math.max(0, (prev[g] ?? 1) - 1) }));
+          }
+        } catch {
+          /* transient poll error — retry on the next attempt */
+        }
+      }
+    }
+    if (runId.current !== myRun) return;
     setPending((prev) => ({ ...prev, [g]: 0 }));
     if (got === 0 && firstError) {
       setImgErrors((prev) => ({ ...prev, [g]: firstError }));
@@ -155,6 +206,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setPending({});
     setImgErrors({});
     startedImages.current.clear();
+    runId.current += 1;
     setOrder(null);
     setOrderError(null);
     try {

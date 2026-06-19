@@ -1,6 +1,11 @@
-import type { DesignBrief, GarmentImage, GarmentType, ShotKind } from "../types";
+import type { DesignBrief, GarmentType, ShotKind } from "../types";
 import { config } from "../config";
-import { generateOpenAiImage, type ImageSize } from "./providers/openai-image";
+import {
+  startImageJob,
+  pollImageJob,
+  type ImageSize,
+  type PollResult,
+} from "./providers/openai-image";
 
 // ---------------------------------------------------------------------------
 // Photorealistic garment imagery. Turns a DesignBrief into a rich prompt and
@@ -113,23 +118,24 @@ export function imageProviderEnabled(): boolean {
   return config.image.enabled;
 }
 
-/** Renders a single garment image, or null if no provider is configured. */
-export async function renderGarmentImage(
+/** Alt text for a generated shot. */
+export function altFor(brief: DesignBrief, shot: ShotKind): string {
+  return shot === "product"
+    ? `${brief.title} — product photo`
+    : `${brief.title} worn by a model`;
+}
+
+/** Starts a background image job for one shot; returns the job id. */
+export async function startGarmentJob(
   brief: DesignBrief,
   shot: ShotKind,
   variant: number,
   vibe: string,
-): Promise<GarmentImage | null> {
-  if (!config.image.enabled) return null;
+): Promise<string> {
   const prompt = buildImagePrompt(brief, shot, variant, vibe);
   const size: ImageSize = shot === "model" ? "1024x1792" : "1024x1024";
-  const src = await generateOpenAiImage(prompt, size);
-  return {
-    kind: shot,
-    src,
-    alt:
-      shot === "product"
-        ? `${brief.title} — product photo`
-        : `${brief.title} worn by a model`,
-  };
+  return startImageJob(prompt, size);
 }
+
+export { pollImageJob };
+export type { PollResult };
