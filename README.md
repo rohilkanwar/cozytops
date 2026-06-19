@@ -116,6 +116,34 @@ src/
 - **Image-gen mockups:** swap `renderMockup()` for a call to an
   image-generation model; the call site and types stay the same.
 
+## Deploy
+
+The app is a standard Next.js project and needs **no environment variables to
+run** (demo mode). Add `ANTHROPIC_API_KEY` later to switch on the Claude path.
+
+### Vercel (recommended)
+
+Zero-config — Vercel detects Next.js automatically.
+
+1. Push to GitHub (already done).
+2. At [vercel.com/new](https://vercel.com/new), **Import** the `cozytops` repo.
+3. Framework preset auto-detects **Next.js**; leave build/output settings at
+   defaults. (Optional: add `ANTHROPIC_API_KEY` under *Environment Variables*.)
+4. **Deploy.** You get a `*.vercel.app` URL; pushes auto-redeploy.
+
+> Note: Vercel's *Production Branch* defaults to the repo's default branch
+> (currently `claude/vigilant-knuth-inx1ud`). Point it at `main` later if you
+> promote one.
+
+Or via CLI: `npm i -g vercel && vercel` (interactive) — or non-interactive with
+a token: `vercel --prod --yes --token $VERCEL_TOKEN`.
+
+### Fly.io
+
+Next.js needs `output: "standalone"` in `next.config.mjs` plus a `Dockerfile`,
+then `fly launch`. Heavier than Vercel; ask and this repo can include the Fly
+scaffolding.
+
 ---
 
 Built with Next.js (App Router), TypeScript, Tailwind, and the Anthropic SDK.
