@@ -149,3 +149,19 @@ export interface DesignResponse {
   mockupSvg: string;
   engine: "claude" | "heuristic";
 }
+
+export type ShotKind = "product" | "model";
+
+/** A photorealistic, AI-generated garment image. */
+export interface GarmentImage {
+  kind: ShotKind;
+  /** A data: URL (base64 PNG) or a remote URL. */
+  src: string;
+  alt: string;
+}
+
+export interface RenderResponse {
+  image?: GarmentImage;
+  /** True when no image provider is configured — client falls back to SVG. */
+  unavailable?: boolean;
+}

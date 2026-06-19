@@ -30,4 +30,22 @@ export const config = {
     shopifyDomain: process.env.SHOPIFY_STORE_DOMAIN || "",
     shopifyToken: process.env.SHOPIFY_ADMIN_TOKEN || "",
   },
+
+  image: {
+    provider: (process.env.IMAGE_PROVIDER ||
+      (process.env.OPENAI_API_KEY ? "openai" : "none")) as "openai" | "none",
+    openaiKey: process.env.OPENAI_API_KEY || "",
+    openaiModel: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
+    quality: (process.env.IMAGE_QUALITY || "medium") as
+      | "low"
+      | "medium"
+      | "high"
+      | "auto",
+    get enabled() {
+      const provider =
+        process.env.IMAGE_PROVIDER ||
+        (process.env.OPENAI_API_KEY ? "openai" : "none");
+      return provider !== "none" && Boolean(process.env.OPENAI_API_KEY);
+    },
+  },
 } as const;

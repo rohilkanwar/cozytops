@@ -5,13 +5,16 @@ import Link from "next/link";
 import type {
   AnalyzeResponse,
   DesignResponse,
+  GarmentImage,
   GarmentType,
   OrderConfirmation,
+  RenderResponse,
+  ShotKind,
 } from "@/lib/types";
 import { AnalyzingView } from "./AnalyzingView";
 import { StyleProfileCard } from "./StyleProfileCard";
 import { GarmentPicker } from "./GarmentPicker";
-import { MockupView } from "./MockupView";
+import { DesignGallery } from "./DesignGallery";
 import { DesignDetails } from "./DesignDetails";
 import { CheckoutPanel } from "./CheckoutPanel";
 import { HandleInput } from "../HandleInput";
@@ -42,27 +45,79 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   const [order, setOrder] = useState<OrderConfirmation | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
 
+  // Photorealistic images, generated + cached per garment.
+  const [images, setImages] = useState<Partial<Record<GarmentType, GarmentImage[]>>>({});
+  const [pending, setPending] = useState<Partial<Record<GarmentType, number>>>({});
+  const [imgUnavailable, setImgUnavailable] = useState(false);
+
   const lastHandle = useRef<string | null>(null);
+  const startedImages = useRef<Set<GarmentType>>(new Set());
+  const imgUnavailableRef = useRef(false);
+
+  // Generates the photoreal shots for a garment, one request at a time so each
+  // stays under the serverless timeout; images stream in + are cached per garment.
+  async function ensureImages(
+    g: GarmentType,
+    design: DesignResponse["design"],
+    vibe: string,
+  ) {
+    if (imgUnavailableRef.current || startedImages.current.has(g)) return;
+    startedImages.current.add(g);
+
+    const shots: { shot: ShotKind; variant: number }[] = [
+      { shot: "product", variant: 0 },
+      { shot: "model", variant: 0 },
+      { shot: "model", variant: 1 },
+    ];
+    setImages((prev) => ({ ...prev, [g]: [] }));
+    setPending((prev) => ({ ...prev, [g]: shots.length }));
+
+    for (const { shot, variant } of shots) {
+      try {
+        const r = await postJson<RenderResponse>("/api/render", {
+          design,
+          shot,
+          variant,
+          vibe,
+        });
+        if (r.unavailable) {
+          imgUnavailableRef.current = true;
+          setImgUnavailable(true);
+          setPending((prev) => ({ ...prev, [g]: 0 }));
+          return;
+        }
+        if (r.image) {
+          const img = r.image;
+          setImages((prev) => ({ ...prev, [g]: [...(prev[g] ?? []), img] }));
+        }
+      } catch {
+        /* skip this shot, keep going */
+      }
+      setPending((prev) => ({ ...prev, [g]: Math.max(0, (prev[g] ?? 1) - 1) }));
+    }
+    setPending((prev) => ({ ...prev, [g]: 0 }));
+  }
 
   async function runDesign(resp: AnalyzeResponse, g: GarmentType, cache: typeof designs) {
-    if (cache[g]) {
-      setGarment(g);
-      return;
-    }
-    setDesigning(true);
-    try {
-      const d = await postJson<DesignResponse>("/api/design", {
-        style: resp.style,
-        garment: g,
-        displayName: resp.profile.displayName,
-      });
-      setDesigns((prev) => ({ ...prev, [g]: d }));
-      setGarment(g);
-    } catch {
-      /* keep current design on failure */
-    } finally {
+    let design = cache[g]?.design;
+    if (!cache[g]) {
+      setDesigning(true);
+      try {
+        const d = await postJson<DesignResponse>("/api/design", {
+          style: resp.style,
+          garment: g,
+          displayName: resp.profile.displayName,
+        });
+        setDesigns((prev) => ({ ...prev, [g]: d }));
+        design = d.design;
+      } catch {
+        setDesigning(false);
+        return;
+      }
       setDesigning(false);
     }
+    setGarment(g);
+    if (design) void ensureImages(g, design, resp.style.vibeName);
   }
 
   async function runAnalyze(handle: string) {
@@ -70,6 +125,9 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setAnalyzeError(null);
     setData(null);
     setDesigns({});
+    setImages({});
+    setPending({});
+    startedImages.current.clear();
     setOrder(null);
     setOrderError(null);
     try {
@@ -185,7 +243,14 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
             <GarmentPicker selected={garment} onSelect={selectGarment} disabled={designing} />
           </div>
 
-          <MockupView svg={current?.mockupSvg ?? null} designing={designing} />
+          <DesignGallery
+            key={garment}
+            svg={current?.mockupSvg ?? ""}
+            images={images[garment] ?? []}
+            pending={pending[garment] ?? 0}
+            unavailable={imgUnavailable}
+            designing={designing}
+          />
 
           {current && (
             <div className="card p-6">
