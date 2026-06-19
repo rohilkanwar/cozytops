@@ -4,23 +4,25 @@ export function Logo({ className = "" }: { className?: string }) {
   return (
     <Link
       href="/"
-      className={`group inline-flex items-center gap-2.5 ${className}`}
+      className={`group inline-flex items-center gap-3 ${className}`}
       aria-label="Cozy Tops home"
     >
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-terracotta text-cream shadow-cozy-sm transition group-hover:rotate-6">
-        <svg viewBox="0 0 32 32" className="h-6 w-6" aria-hidden="true">
-          <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="2.4" />
-          <path
-            d="M6 16c4-6 16-6 20 0M6 16c4 6 16 6 20 0M16 3c-6 4-6 22 0 26M16 3c6 4 6 22 0 26"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            opacity="0.8"
-          />
+      <span className="relative inline-flex h-10 w-10 items-center justify-center transition group-hover:scale-[1.03]">
+        <svg viewBox="0 0 40 40" className="h-10 w-10" aria-hidden="true">
+          <circle cx="20" cy="20" r="18.5" fill="none" stroke="#16293F" strokeWidth="1" />
+          <circle cx="20" cy="20" r="14.5" fill="none" stroke="#A98B4E" strokeWidth="0.8" />
         </svg>
+        <span className="absolute inset-0 flex items-center justify-center font-display text-[1.05rem] font-semibold tracking-tight text-navy">
+          CT
+        </span>
       </span>
-      <span className="font-display text-2xl font-bold leading-none tracking-tight text-cocoa">
-        Cozy<span className="text-terracotta"> Tops</span>
+      <span className="leading-none">
+        <span className="block font-display text-[1.4rem] font-semibold uppercase tracking-[0.2em] text-ink">
+          Cozy Tops
+        </span>
+        <span className="mt-1 block text-[0.55rem] font-medium uppercase tracking-crest text-ink/40">
+          Atelier · Est. 2026
+        </span>
       </span>
     </Link>
   );

@@ -1,8 +1,8 @@
 import type { AnalyzeResponse } from "@/lib/types";
 
 const ENGINE_LABEL: Record<AnalyzeResponse["engine"], string> = {
-  "claude-vision": "Analyzed with Claude vision",
-  "claude-text": "Analyzed with Claude",
+  "claude-vision": "Analysed with Claude vision",
+  "claude-text": "Analysed with Claude",
   heuristic: "Style read · demo engine",
 };
 
@@ -18,23 +18,23 @@ export function StyleProfileCard({ data }: { data: AnalyzeResponse }) {
   const pct = Math.round(style.confidence * 100);
 
   return (
-    <div className="card p-6 sm:p-7">
+    <div className="card p-6 sm:p-8">
       {/* Identity */}
       <div className="flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-sage/25 font-display text-xl font-bold text-sage-deep">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-cozy border border-brass/60 bg-cream font-display text-xl font-semibold text-navy">
           {initials(profile.displayName || profile.handle)}
         </div>
         <div className="min-w-0">
-          <p className="truncate font-display text-lg font-semibold text-cocoa">
+          <p className="truncate font-display text-xl font-semibold text-ink">
             {profile.displayName}
           </p>
-          <p className="text-sm text-cocoa/55">@{profile.handle}</p>
+          <p className="text-sm text-ink/55">@{profile.handle}</p>
         </div>
         <span
           className={`ml-auto chip ${
             profile.source === "demo"
-              ? "bg-butter/40 text-cocoa/70"
-              : "bg-sage/20 text-sage-deep"
+              ? "border-brass/50 text-brass-deep"
+              : "border-forest/40 text-forest-deep"
           }`}
         >
           {profile.source === "demo" ? "Demo persona" : "Live profile"}
@@ -42,46 +42,43 @@ export function StyleProfileCard({ data }: { data: AnalyzeResponse }) {
       </div>
 
       {notice && (
-        <p className="mt-4 rounded-2xl bg-butter/25 px-4 py-2 text-sm text-cocoa/70">
+        <p className="mt-5 rounded-cozy border-l-2 border-brass/60 bg-brass/[0.08] px-4 py-2.5 text-sm text-ink/70">
           {notice}
         </p>
       )}
 
+      <div className="mt-7 h-px w-full bg-ink/10" />
+
       {/* Vibe + confidence */}
       <div className="mt-6">
-        <p className="text-xs font-semibold uppercase tracking-wide text-cocoa/45">
-          Your vibe
-        </p>
-        <h3 className="mt-1 font-display text-3xl font-bold text-terracotta-deep">
+        <p className="eyebrow">Your vibe</p>
+        <h3 className="mt-2 font-display text-4xl font-semibold italic text-burgundy">
           {style.vibeName}
         </h3>
-        <div className="mt-3 flex items-center gap-3">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-oat">
-            <div
-              className="h-full rounded-full bg-sage"
-              style={{ width: `${pct}%` }}
-            />
+        <div className="mt-4 flex items-center gap-3">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-oat">
+            <div className="h-full bg-burgundy" style={{ width: `${pct}%` }} />
           </div>
-          <span className="text-sm font-semibold text-cocoa/60">{pct}% read</span>
+          <span className="text-[0.62rem] font-medium uppercase tracking-luxe text-ink/55">
+            {pct}% read
+          </span>
         </div>
       </div>
 
-      <p className="mt-4 leading-relaxed text-cocoa/75">{style.summary}</p>
+      <p className="mt-5 leading-relaxed text-ink/75">{style.summary}</p>
 
       {/* Palette */}
-      <div className="mt-6">
-        <p className="text-xs font-semibold uppercase tracking-wide text-cocoa/45">
-          Your palette
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-7">
+        <p className="eyebrow">The palette</p>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-3">
           {style.palette.map((c) => (
             <div key={c.hex + c.name} className="flex items-center gap-2">
               <span
-                className="h-8 w-8 rounded-full border border-cocoa/10 shadow-inner"
+                className="h-7 w-7 rounded-[2px] border border-ink/15"
                 style={{ backgroundColor: c.hex }}
                 title={`${c.name} ${c.hex}`}
               />
-              <span className="text-xs text-cocoa/55">{c.name}</span>
+              <span className="text-xs text-ink/55">{c.name}</span>
             </div>
           ))}
         </div>
@@ -97,25 +94,21 @@ export function StyleProfileCard({ data }: { data: AnalyzeResponse }) {
       </div>
 
       {/* Affinities + signature */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="mt-7 grid gap-5 sm:grid-cols-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-cocoa/45">
-            Drawn to
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-cocoa/75">
+          <p className="eyebrow">Drawn to</p>
+          <ul className="mt-3 space-y-1.5 text-sm text-ink/75">
             {style.garmentAffinities.slice(0, 4).map((g) => (
-              <li key={g} className="flex gap-2">
-                <span className="text-terracotta">·</span>
+              <li key={g} className="flex gap-2.5">
+                <span className="text-brass">—</span>
                 {g}
               </li>
             ))}
           </ul>
         </div>
-        <div className="rounded-2xl bg-terracotta/8 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-terracotta-deep/70">
-            Signature detail
-          </p>
-          <p className="mt-1 text-sm font-medium text-cocoa/80">
+        <div className="rounded-cozy border-l-2 border-brass/70 bg-burgundy/[0.05] p-4">
+          <p className="eyebrow text-burgundy/70">Signature detail</p>
+          <p className="mt-2 text-sm leading-relaxed text-ink/80">
             {style.signatureMotif}
           </p>
         </div>
@@ -123,17 +116,17 @@ export function StyleProfileCard({ data }: { data: AnalyzeResponse }) {
 
       {/* Evidence */}
       {style.evidence.length > 0 && (
-        <details className="mt-6 group">
-          <summary className="cursor-pointer list-none text-sm font-semibold text-cocoa/60 hover:text-cocoa">
-            <span className="group-open:hidden">▸ Why we think this</span>
-            <span className="hidden group-open:inline">▾ Why we think this</span>
+        <details className="group mt-7">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.66rem] font-medium uppercase tracking-luxe text-ink/55 transition hover:text-ink">
+            <span className="text-brass transition group-open:rotate-90">›</span>
+            Why we think this
           </summary>
           <ul className="mt-3 space-y-2">
             {style.evidence.map((e, idx) => (
-              <li key={idx} className="rounded-xl bg-oat/50 px-3 py-2 text-sm text-cocoa/70">
-                <span className="text-cocoa/85">{e.observation}</span>
+              <li key={idx} className="rounded-cozy bg-oat/40 px-3 py-2 text-sm text-ink/70">
+                <span className="text-ink/85">{e.observation}</span>
                 {captionById.get(e.postId) && (
-                  <span className="mt-0.5 block truncate text-xs italic text-cocoa/45">
+                  <span className="mt-0.5 block truncate text-xs italic text-ink/45">
                     “{captionById.get(e.postId)}”
                   </span>
                 )}
@@ -143,7 +136,9 @@ export function StyleProfileCard({ data }: { data: AnalyzeResponse }) {
         </details>
       )}
 
-      <p className="mt-6 text-right text-xs text-cocoa/40">{ENGINE_LABEL[engine]}</p>
+      <p className="mt-7 text-right text-[0.58rem] font-medium uppercase tracking-luxe text-ink/35">
+        {ENGINE_LABEL[engine]}
+      </p>
     </div>
   );
 }

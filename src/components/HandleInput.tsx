@@ -25,7 +25,7 @@ export function HandleInput({ autoFocus = false }: { autoFocus?: boolean }) {
         className="flex flex-col gap-3 sm:flex-row"
       >
         <div className="relative flex-1">
-          <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-lg font-semibold text-cocoa/40">
+          <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-lg text-ink/40">
             @
           </span>
           <input
@@ -35,22 +35,24 @@ export function HandleInput({ autoFocus = false }: { autoFocus?: boolean }) {
             onChange={(e) => setValue(e.target.value)}
             placeholder="your.instagram"
             aria-label="Instagram handle"
-            className="w-full rounded-full border-2 border-cocoa/15 bg-white/90 py-4 pl-10 pr-5 text-lg text-cocoa shadow-cozy-sm outline-none transition placeholder:text-cocoa/35 focus:border-terracotta"
+            className="w-full rounded-cozy border border-ink/20 bg-parchment py-4 pl-10 pr-5 text-lg text-ink shadow-cozy-sm outline-none transition placeholder:text-ink/35 focus:border-burgundy"
           />
         </div>
-        <button type="submit" className="btn-primary text-lg">
-          Design my top →
+        <button type="submit" className="btn-primary">
+          Design My Piece
         </button>
       </form>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="text-sm text-cocoa/50">Try a sample:</span>
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-[0.62rem] font-medium uppercase tracking-luxe text-ink/45">
+          Or try one of ours
+        </span>
         {SAMPLES.map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => go(s)}
-            className="chip transition hover:bg-terracotta/15 hover:text-terracotta-deep"
+            className="rounded-cozy border border-ink/15 px-3 py-1 text-xs text-ink/65 transition hover:border-burgundy hover:text-burgundy"
           >
             {s}
           </button>

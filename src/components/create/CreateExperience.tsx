@@ -182,12 +182,14 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
 
   if (phase === "idle") {
     return (
-      <div className="mx-auto max-w-xl px-6 py-20 text-center">
-        <h1 className="font-display text-3xl font-bold text-cocoa">
-          Let&apos;s design your top
+      <div className="mx-auto max-w-xl px-6 py-24 text-center">
+        <p className="eyebrow">The Atelier</p>
+        <div className="mx-auto mt-3 h-px w-12 bg-brass/70" />
+        <h1 className="mt-5 font-display text-4xl font-semibold text-ink">
+          Let us design your piece
         </h1>
-        <p className="mt-2 text-cocoa/65">
-          Enter a public Instagram handle to begin.
+        <p className="mt-3 text-ink/65">
+          Offer a public Instagram handle to begin.
         </p>
         <div className="mt-8 text-left">
           <HandleInput autoFocus />
@@ -202,12 +204,13 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
 
   if (phase === "error") {
     return (
-      <div className="mx-auto max-w-xl px-6 py-20 text-center">
-        <p className="text-4xl">🧶</p>
-        <h1 className="mt-4 font-display text-2xl font-bold text-cocoa">
+      <div className="mx-auto max-w-xl px-6 py-24 text-center">
+        <p className="eyebrow text-burgundy/70">Not Found</p>
+        <div className="mx-auto mt-3 h-px w-12 bg-brass/70" />
+        <h1 className="mt-5 font-display text-3xl font-semibold text-ink">
           We couldn&apos;t read that one
         </h1>
-        <p className="mt-2 text-cocoa/65">{analyzeError}</p>
+        <p className="mt-3 text-ink/65">{analyzeError}</p>
         <div className="mt-8 text-left">
           <HandleInput autoFocus />
         </div>
@@ -220,15 +223,15 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-8 flex items-end justify-between border-b border-ink/10 pb-5">
         <div>
-          <p className="text-sm text-cocoa/50">Designed for</p>
-          <p className="font-display text-2xl font-bold text-cocoa">
+          <p className="eyebrow">Designed for</p>
+          <p className="mt-1.5 font-display text-3xl font-semibold text-ink">
             @{data?.profile.handle}
           </p>
         </div>
         <Link href="/" className="btn-ghost">
-          Try another handle
+          New Handle
         </Link>
       </div>
 
@@ -236,10 +239,8 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
         {data && <StyleProfileCard data={data} />}
 
         <div className="space-y-5">
-          <div className="card p-5">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-cocoa/45">
-              Choose your canvas
-            </p>
+          <div className="card p-6">
+            <p className="eyebrow mb-4">Choose your canvas</p>
             <GarmentPicker selected={garment} onSelect={selectGarment} disabled={designing} />
           </div>
 

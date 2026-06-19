@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 
 const MESSAGES = [
   "Opening @HANDLE's feed…",
-  "Looking at the photos, not just the captions…",
-  "Reading the color story…",
-  "Noticing textures and silhouettes…",
-  "Spotting the garments you gravitate to…",
-  "Finding the one detail that's so you…",
+  "Studying the photographs, not just the captions…",
+  "Reading the colour story…",
+  "Noting textures and silhouettes…",
+  "Tracing the garments you gravitate toward…",
+  "Finding the one detail that is unmistakably you…",
   "Sketching your one-of-one piece…",
 ];
 
@@ -21,24 +21,27 @@ export function AnalyzingView({ handle }: { handle: string }) {
   }, []);
 
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center px-6 py-24 text-center">
-      <div className="relative h-20 w-20">
-        <span className="absolute inset-0 animate-spin rounded-full border-4 border-oat border-t-terracotta" />
-        <span className="absolute inset-2 animate-pulse-soft rounded-full bg-terracotta/10" />
-        <span className="absolute inset-0 flex items-center justify-center text-2xl">🧶</span>
+    <div className="mx-auto flex max-w-md flex-col items-center px-6 py-28 text-center">
+      <div className="relative h-16 w-16">
+        <span className="absolute inset-0 animate-spin rounded-full border border-oat border-t-burgundy" />
+        <span className="absolute inset-[3px] rounded-full border border-brass/40" />
+        <span className="absolute inset-0 flex items-center justify-center font-display text-sm font-semibold tracking-tight text-navy">
+          CT
+        </span>
       </div>
-      <p className="mt-8 font-display text-2xl font-semibold text-cocoa">
+      <p className="mt-8 eyebrow">The Atelier</p>
+      <p className="mt-3 font-display text-3xl font-semibold text-ink">
         Reading your style
       </p>
-      <p className="mt-2 h-6 text-cocoa/60 transition-all">
+      <p className="mt-3 h-6 text-ink/60">
         {MESSAGES[i].replace("@HANDLE", `@${handle}`)}
       </p>
-      <div className="mt-6 flex gap-1.5">
+      <div className="mt-7 flex gap-1.5">
         {MESSAGES.map((_, idx) => (
           <span
             key={idx}
             className={`h-1.5 rounded-full transition-all ${
-              idx <= i ? "w-6 bg-terracotta" : "w-1.5 bg-oat"
+              idx <= i ? "w-6 bg-burgundy" : "w-1.5 bg-oat"
             }`}
           />
         ))}
