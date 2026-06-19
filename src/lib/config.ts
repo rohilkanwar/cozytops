@@ -35,8 +35,8 @@ export const config = {
     provider: (process.env.IMAGE_PROVIDER ||
       (process.env.OPENAI_API_KEY ? "openai" : "none")) as "openai" | "none",
     openaiKey: process.env.OPENAI_API_KEY || "",
-    openaiModel: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
-    quality: (process.env.IMAGE_QUALITY || "medium") as
+    openaiModel: process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
+    quality: (process.env.IMAGE_QUALITY || "high") as
       | "low"
       | "medium"
       | "high"

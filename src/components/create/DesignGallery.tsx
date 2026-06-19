@@ -28,12 +28,16 @@ export function DesignGallery({
   pending,
   unavailable,
   designing,
+  error,
+  onRetry,
 }: {
   svg: string;
   images: GarmentImage[];
   pending: number;
   unavailable: boolean;
   designing: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }) {
   // Selected slide key: "img-<i>" for a photo, or "svg" for the schematic.
   const [picked, setPicked] = useState<string | null>(null);
@@ -116,6 +120,24 @@ export function DesignGallery({
           </Thumb>
         )}
       </div>
+
+      {error && images.length === 0 && (
+        <div className="border-t border-burgundy/20 bg-burgundy/[0.04] px-4 py-3">
+          <p className="text-xs leading-relaxed text-burgundy">
+            <span className="font-medium">Photorealistic preview unavailable.</span>{" "}
+            {error}
+          </p>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 text-[0.62rem] font-medium uppercase tracking-luxe text-burgundy underline underline-offset-2 hover:text-burgundy-deep"
+            >
+              Try again
+            </button>
+          )}
+        </div>
+      )}
 
       {unavailable && (
         <p className="px-4 pb-4 text-center text-xs text-ink/40">

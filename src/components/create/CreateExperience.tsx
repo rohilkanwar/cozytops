@@ -48,6 +48,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   // Photorealistic images, generated + cached per garment.
   const [images, setImages] = useState<Partial<Record<GarmentType, GarmentImage[]>>>({});
   const [pending, setPending] = useState<Partial<Record<GarmentType, number>>>({});
+  const [imgErrors, setImgErrors] = useState<Partial<Record<GarmentType, string>>>({});
   const [imgUnavailable, setImgUnavailable] = useState(false);
 
   const lastHandle = useRef<string | null>(null);
@@ -63,6 +64,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   ) {
     if (imgUnavailableRef.current || startedImages.current.has(g)) return;
     startedImages.current.add(g);
+    setImgErrors((prev) => ({ ...prev, [g]: undefined }));
 
     const shots: { shot: ShotKind; variant: number }[] = [
       { shot: "product", variant: 0 },
@@ -72,6 +74,8 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setImages((prev) => ({ ...prev, [g]: [] }));
     setPending((prev) => ({ ...prev, [g]: shots.length }));
 
+    let got = 0;
+    let firstError: string | undefined;
     for (const { shot, variant } of shots) {
       try {
         const r = await postJson<RenderResponse>("/api/render", {
@@ -88,14 +92,36 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
         }
         if (r.image) {
           const img = r.image;
+          got += 1;
           setImages((prev) => ({ ...prev, [g]: [...(prev[g] ?? []), img] }));
         }
-      } catch {
-        /* skip this shot, keep going */
+      } catch (e) {
+        if (!firstError) {
+          firstError = e instanceof Error ? e.message : "Image generation failed.";
+        }
       }
       setPending((prev) => ({ ...prev, [g]: Math.max(0, (prev[g] ?? 1) - 1) }));
     }
     setPending((prev) => ({ ...prev, [g]: 0 }));
+    if (got === 0 && firstError) {
+      setImgErrors((prev) => ({ ...prev, [g]: firstError }));
+    }
+  }
+
+  // Re-attempt image generation for the current garment after a failure.
+  function retryImages() {
+    if (!data) return;
+    const g = garment;
+    const design = designs[g]?.design;
+    if (!design) return;
+    startedImages.current.delete(g);
+    setImgErrors((prev) => ({ ...prev, [g]: undefined }));
+    setImages((prev) => {
+      const next = { ...prev };
+      delete next[g];
+      return next;
+    });
+    void ensureImages(g, design, data.style.vibeName);
   }
 
   async function runDesign(resp: AnalyzeResponse, g: GarmentType, cache: typeof designs) {
@@ -127,6 +153,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setDesigns({});
     setImages({});
     setPending({});
+    setImgErrors({});
     startedImages.current.clear();
     setOrder(null);
     setOrderError(null);
@@ -251,6 +278,8 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
             pending={pending[garment] ?? 0}
             unavailable={imgUnavailable}
             designing={designing}
+            error={imgErrors[garment] ?? null}
+            onRetry={retryImages}
           />
 
           {current && (

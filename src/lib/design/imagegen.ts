@@ -92,20 +92,20 @@ export function buildImagePrompt(
   const spec = garmentSpec(brief);
   if (shot === "product") {
     return [
-      "Professional e-commerce product photograph for a premium heritage fashion label.",
+      "Ultra-realistic professional e-commerce product photograph for a premium heritage fashion house.",
       `A single ${spec}`,
-      "Presented on an invisible ghost-mannequin, front view, against a clean warm off-white seamless studio backdrop.",
-      `Soft, even, diffused studio lighting; true-to-life ${FABRIC_WORD[brief.garment]} texture; crisp focus; high-resolution catalogue look.`,
-      "No human, no text overlays, no watermark.",
+      "Presented on an invisible ghost-mannequin, perfectly centred front view, against a clean warm off-white seamless studio backdrop.",
+      `Soft, even, diffused studio softbox lighting; photographed on a medium-format camera with a 100mm lens; true-to-life ${FABRIC_WORD[brief.garment]} texture with visible knit/weave detail and a natural fabric drape; tack-sharp focus; colour-accurate; high-resolution luxury catalogue look.`,
+      "Photorealistic. No visible mannequin, no human, no text, no logo, no watermark.",
     ].join(" ");
   }
   const model = MODELS[variant % MODELS.length];
   return [
-    "Editorial lifestyle campaign photograph for a premium heritage fashion label.",
+    "Ultra-realistic editorial fashion campaign photograph for a premium heritage label, in the aspirational tone of timeless American heritage luxury.",
     `${model}, wearing a ${spec}`,
     sceneFor(vibe, brief) + ".",
-    "Natural light, film-like color, three-quarter-body framing, shot on a 50mm lens with shallow depth of field, ultra-realistic photography.",
-    "The garment is the hero of the shot. No text overlays, no watermark.",
+    "Soft natural directional light, warm filmic colour grade reminiscent of Kodak Portra 400, fine film grain, three-quarter-body framing, photographed on a medium-format camera with an 80mm lens at a shallow depth of field.",
+    "Refined, relaxed styling; natural skin texture; lifelike fabric detail; photorealistic. The garment is the hero of the shot. No text, no logo, no watermark.",
   ].join(" ");
 }
 
@@ -122,7 +122,7 @@ export async function renderGarmentImage(
 ): Promise<GarmentImage | null> {
   if (!config.image.enabled) return null;
   const prompt = buildImagePrompt(brief, shot, variant, vibe);
-  const size: ImageSize = shot === "model" ? "1024x1536" : "1024x1024";
+  const size: ImageSize = shot === "model" ? "1024x1792" : "1024x1024";
   const src = await generateOpenAiImage(prompt, size);
   return {
     kind: shot,

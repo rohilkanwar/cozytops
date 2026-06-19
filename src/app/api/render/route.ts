@@ -41,6 +41,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ image } satisfies RenderResponse);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Image generation failed.";
+    console.error("[render] image generation failed:", message);
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
