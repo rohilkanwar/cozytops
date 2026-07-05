@@ -45,6 +45,45 @@ type PollResponse = {
   error?: string;
 };
 
+type PersistedJob = { id: string; kind: ShotKind; alt: string };
+type PersistedRun = {
+  v: 1;
+  handle: string;
+  savedAt: number;
+  data: AnalyzeResponse;
+  designs: Partial<Record<GarmentType, DesignResponse>>;
+  jobs: Partial<Record<GarmentType, PersistedJob[]>>;
+  vibe: string;
+};
+
+// A run is kept for 24h — comfortably inside OpenAI's stored-response retention,
+// so persisted job ids still resolve to their finished images after a refresh.
+const RUN_TTL_MS = 1000 * 60 * 60 * 24;
+const runKey = (handle: string) => `cozytops:run:${handle.toLowerCase()}`;
+
+function loadRun(handle: string): PersistedRun | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(runKey(handle));
+    if (!raw) return null;
+    const run = JSON.parse(raw) as PersistedRun;
+    if (run.v !== 1 || !run.data) return null;
+    if (Date.now() - run.savedAt > RUN_TTL_MS) return null;
+    return run;
+  } catch {
+    return null;
+  }
+}
+
+function saveRun(run: PersistedRun) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(runKey(run.handle), JSON.stringify(run));
+  } catch {
+    /* private mode / quota — persistence is best-effort, never fatal */
+  }
+}
+
 export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   const [phase, setPhase] = useState<Phase>(initialHandle ? "analyzing" : "idle");
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -68,9 +107,21 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   const startedImages = useRef<Set<GarmentType>>(new Set());
   const imgUnavailableRef = useRef(false);
   const runId = useRef(0);
+  const runRef = useRef<PersistedRun | null>(null);
 
-  // Generates the photoreal shots for a garment, one request at a time so each
-  // stays under the serverless timeout; images stream in + are cached per garment.
+  // Best-effort durable snapshot of the current run so a refresh re-hydrates
+  // without regenerating designs or losing already-finished images.
+  function persistPatch(patch: Partial<PersistedRun>) {
+    const base = runRef.current;
+    if (!base) return;
+    runRef.current = { ...base, ...patch, savedAt: Date.now() };
+    saveRun(runRef.current);
+  }
+
+  // Generates the photoreal shots for a garment. Each shot runs as an OpenAI
+  // background job (started once, then polled) so no request nears the 60s
+  // serverless limit. Job ids are persisted, so a refresh re-polls and the
+  // already-finished images come straight back — nothing is lost or regenerated.
   async function ensureImages(
     g: GarmentType,
     design: DesignResponse["design"],
@@ -80,56 +131,65 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     startedImages.current.add(g);
     const myRun = runId.current;
     setImgErrors((prev) => ({ ...prev, [g]: undefined }));
-
-    const shots: { shot: ShotKind; variant: number }[] = [
-      { shot: "product", variant: 0 },
-      { shot: "model", variant: 0 },
-      { shot: "model", variant: 1 },
-    ];
     setImages((prev) => ({ ...prev, [g]: [] }));
-    setPending((prev) => ({ ...prev, [g]: shots.length }));
 
     let firstError: string | undefined;
 
-    // 1) Kick off every shot as a background job (each returns an id in ~1s).
-    const jobs: { id: string; kind: ShotKind; alt: string }[] = [];
-    for (const { shot, variant } of shots) {
-      try {
-        const r = await postJson<StartResponse>("/api/render/start", {
-          design,
-          shot,
-          variant,
-          vibe,
-        });
-        if (r.unavailable) {
-          imgUnavailableRef.current = true;
-          setImgUnavailable(true);
-          setPending((prev) => ({ ...prev, [g]: 0 }));
-          return;
-        }
-        if (r.jobId && r.kind && r.alt) {
-          jobs.push({ id: r.jobId, kind: r.kind, alt: r.alt });
-        }
-      } catch (e) {
-        if (!firstError) {
-          firstError = e instanceof Error ? e.message : "Failed to start image job.";
+    // Reuse persisted job ids when we have them (e.g. after a page refresh);
+    // otherwise start a fresh background job per shot.
+    let jobs = runRef.current?.jobs?.[g] ?? null;
+    if (!jobs || jobs.length === 0) {
+      const shots: { shot: ShotKind; variant: number }[] = [
+        { shot: "product", variant: 0 },
+        { shot: "model", variant: 0 },
+        { shot: "model", variant: 1 },
+      ];
+      setPending((prev) => ({ ...prev, [g]: shots.length }));
+      const fresh: PersistedJob[] = [];
+      for (const { shot, variant } of shots) {
+        try {
+          const r = await postJson<StartResponse>("/api/render/start", {
+            design,
+            shot,
+            variant,
+            vibe,
+          });
+          if (r.unavailable) {
+            imgUnavailableRef.current = true;
+            setImgUnavailable(true);
+            setPending((prev) => ({ ...prev, [g]: 0 }));
+            return;
+          }
+          if (r.jobId && r.kind && r.alt) {
+            fresh.push({ id: r.jobId, kind: r.kind, alt: r.alt });
+          }
+        } catch (e) {
+          if (!firstError) {
+            firstError = e instanceof Error ? e.message : "Failed to start image job.";
+          }
         }
       }
+      if (runId.current !== myRun) return;
+      jobs = fresh;
+      if (jobs.length > 0) {
+        persistPatch({ jobs: { ...(runRef.current?.jobs ?? {}), [g]: jobs } });
+      }
     }
-    if (runId.current !== myRun) return;
-    setPending((prev) => ({ ...prev, [g]: jobs.length }));
-    if (jobs.length === 0) {
+
+    setPending((prev) => ({ ...prev, [g]: jobs!.length }));
+    if (jobs!.length === 0) {
       if (firstError) setImgErrors((prev) => ({ ...prev, [g]: firstError }));
       return;
     }
 
-    // 2) Poll each job until it resolves; images stream in as they finish.
-    const pendingIds = new Set(jobs.map((j) => j.id));
+    // Poll each job until it resolves; images stream in as they finish. The
+    // first tick is short so refresh-restored (already-complete) jobs pop in fast.
+    const pendingIds = new Set(jobs!.map((j) => j.id));
     let got = 0;
     for (let attempt = 0; attempt < 75 && pendingIds.size > 0; attempt++) {
-      await delay(4000);
+      await delay(attempt === 0 ? 1200 : 4000);
       if (runId.current !== myRun) return;
-      for (const job of jobs) {
+      for (const job of jobs!) {
         if (!pendingIds.has(job.id)) continue;
         try {
           const p = await postJson<PollResponse>("/api/render/poll", { id: job.id });
@@ -159,13 +219,19 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     }
   }
 
-  // Re-attempt image generation for the current garment after a failure.
+  // Re-attempt image generation for the current garment after a failure. Drops
+  // any persisted jobs for it so we truly regenerate rather than re-poll dead ids.
   function retryImages() {
     if (!data) return;
     const g = garment;
     const design = designs[g]?.design;
     if (!design) return;
     startedImages.current.delete(g);
+    if (runRef.current?.jobs?.[g]) {
+      const nextJobs = { ...runRef.current.jobs };
+      delete nextJobs[g];
+      persistPatch({ jobs: nextJobs });
+    }
     setImgErrors((prev) => ({ ...prev, [g]: undefined }));
     setImages((prev) => {
       const next = { ...prev };
@@ -186,6 +252,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
           displayName: resp.profile.displayName,
         });
         setDesigns((prev) => ({ ...prev, [g]: d }));
+        persistPatch({ designs: { ...(runRef.current?.designs ?? {}), [g]: d } });
         design = d.design;
       } catch {
         setDesigning(false);
@@ -195,6 +262,18 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     }
     setGarment(g);
     if (design) void ensureImages(g, design, resp.style.vibeName);
+  }
+
+  // Re-hydrate a saved run after a refresh: restore persona + designs instantly,
+  // then re-poll the image jobs (OpenAI still has the finished images by id).
+  function restoreRun(cached: PersistedRun) {
+    runRef.current = cached;
+    setData(cached.data);
+    setDesigns(cached.designs);
+    setGarment("sweater");
+    setPhase("ready");
+    runId.current += 1;
+    void runDesign(cached.data, "sweater", cached.designs);
   }
 
   async function runAnalyze(handle: string) {
@@ -212,6 +291,16 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     try {
       const resp = await postJson<AnalyzeResponse>("/api/analyze", { handle });
       setData(resp);
+      runRef.current = {
+        v: 1,
+        handle,
+        savedAt: Date.now(),
+        data: resp,
+        designs: {},
+        jobs: {},
+        vibe: resp.style.vibeName,
+      };
+      saveRun(runRef.current);
       setGarment("sweater");
       setPhase("ready");
       void runDesign(resp, "sweater", {});
@@ -225,7 +314,9 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   useEffect(() => {
     if (initialHandle && initialHandle !== lastHandle.current) {
       lastHandle.current = initialHandle;
-      void runAnalyze(initialHandle);
+      const cached = loadRun(initialHandle);
+      if (cached) restoreRun(cached);
+      else void runAnalyze(initialHandle);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialHandle]);
