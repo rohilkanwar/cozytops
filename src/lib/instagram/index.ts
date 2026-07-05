@@ -89,7 +89,10 @@ export async function resolveInstagramProfile(
   }
 
   if (config.instagram.provider === "demo") {
-    return { profile: buildDemoProfile(handle) };
+    return {
+      profile: buildDemoProfile(handle),
+      notice: `Demo mode: this is a sample persona, not a live read of @${handle}. Connect a live Instagram source to analyze the real account.`,
+    };
   }
 
   try {
