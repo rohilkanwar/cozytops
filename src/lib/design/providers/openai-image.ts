@@ -26,7 +26,11 @@ function headers() {
 }
 
 /** Starts a background image job and returns its id (resolves in ~1s). */
-export async function startImageJob(prompt: string, size: ImageSize): Promise<string> {
+export async function startImageJob(
+  prompt: string,
+  size: ImageSize,
+  quality: "low" | "medium" | "high" | "auto" = config.image.quality,
+): Promise<string> {
   const res = await fetch(RESPONSES_URL, {
     method: "POST",
     headers: headers(),
@@ -37,7 +41,7 @@ export async function startImageJob(prompt: string, size: ImageSize): Promise<st
         {
           type: "image_generation",
           model: config.image.openaiModel,
-          quality: config.image.quality,
+          quality,
           size,
           output_format: "jpeg",
           output_compression: 85,

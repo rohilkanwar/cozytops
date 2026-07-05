@@ -49,13 +49,15 @@ type PollResponse = { results: Record<string, PollStatus> };
 
 type PersistedJob = { id: string; kind: ShotKind; alt: string };
 type PersistedRun = {
-  v: 2;
+  v: 3;
   handle: string;
   savedAt: number;
   data: AnalyzeResponse;
   designs: Partial<Record<GarmentType, DesignResponse>>;
-  /** Image jobs keyed by "<garment>:<optionIndex>". */
+  /** Image jobs keyed by "<garment>:<optionIndex>" (+ ":t" for preview thumbs). */
   jobs: Record<string, PersistedJob[]>;
+  /** Selected option per garment, so a refresh resumes the same design. */
+  selOpt: Partial<Record<GarmentType, number>>;
   vibe: string;
 };
 
@@ -64,6 +66,7 @@ type PersistedRun = {
 const RUN_TTL_MS = 1000 * 60 * 60 * 24;
 const runKey = (handle: string) => `cozytops:run:${handle.toLowerCase()}`;
 const imgKey = (g: GarmentType, opt: number) => `${g}:${opt}`;
+const thumbKey = (g: GarmentType, opt: number) => `${g}:${opt}:t`;
 
 function loadRun(handle: string): PersistedRun | null {
   if (typeof window === "undefined") return null;
@@ -71,7 +74,7 @@ function loadRun(handle: string): PersistedRun | null {
     const raw = window.localStorage.getItem(runKey(handle));
     if (!raw) return null;
     const run = JSON.parse(raw) as PersistedRun;
-    if (run.v !== 2 || !run.data) return null;
+    if (run.v !== 3 || !run.data) return null;
     if (Date.now() - run.savedAt > RUN_TTL_MS) return null;
     return run;
   } catch {
@@ -122,17 +125,21 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     saveRun(runRef.current);
   }
 
-  // Generates the full photo set (product + 2 on-model) for ONE design option.
-  // Each shot runs as an OpenAI background job (started once, then batch-polled)
-  // so no request nears the serverless limit. Job ids are persisted: a refresh
-  // re-polls and already-finished images come straight back — never regenerated.
+  // Generates photography for ONE design option. Spend follows attention:
+  // tier "preview" renders a single cheap product thumbnail for the option
+  // card; tier "full" renders the catalogue-quality 3-shot set, and only runs
+  // for the design the visitor actually selects. Each shot is an OpenAI
+  // background job (started once, then batch-polled) so no request nears the
+  // serverless limit. Job ids are persisted: a refresh re-polls and finished
+  // images come straight back — never regenerated.
   async function ensureImages(
     g: GarmentType,
     opt: number,
     design: DesignBrief,
     vibe: string,
+    tier: "preview" | "full",
   ) {
-    const key = imgKey(g, opt);
+    const key = tier === "preview" ? thumbKey(g, opt) : imgKey(g, opt);
     if (startedImages.current.has(key)) return;
     startedImages.current.add(key);
     const myRun = runId.current;
@@ -145,11 +152,14 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     // otherwise start a fresh background job per shot.
     let jobs = runRef.current?.jobs?.[key] ?? null;
     if (!jobs || jobs.length === 0) {
-      const shots: { shot: ShotKind; variant: number }[] = [
-        { shot: "product", variant: 0 },
-        { shot: "model", variant: opt % 3 },
-        { shot: "model", variant: (opt + 1) % 3 },
-      ];
+      const shots: { shot: ShotKind; variant: number }[] =
+        tier === "preview"
+          ? [{ shot: "product", variant: 0 }]
+          : [
+              { shot: "product", variant: 0 },
+              { shot: "model", variant: opt % 3 },
+              { shot: "model", variant: (opt + 1) % 3 },
+            ];
       setPending((prev) => ({ ...prev, [key]: shots.length }));
       const fresh: PersistedJob[] = [];
       for (const { shot, variant } of shots) {
@@ -159,6 +169,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
             shot,
             variant,
             vibe,
+            tier,
           });
           if (r.jobId && r.kind && r.alt) {
             fresh.push({ id: r.jobId, kind: r.kind, alt: r.alt });
@@ -247,10 +258,15 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
       delete next[key];
       return next;
     });
-    void ensureImages(g, opt, design, data.style.vibeName);
+    void ensureImages(g, opt, design, data.style.vibeName, "full");
   }
 
-  async function runDesign(resp: AnalyzeResponse, g: GarmentType, cache: typeof designs) {
+  async function runDesign(
+    resp: AnalyzeResponse,
+    g: GarmentType,
+    cache: typeof designs,
+    selectedIdx: number,
+  ) {
     let set = cache[g];
     setDesignErrors((prev) => ({ ...prev, [g]: undefined }));
     if (!set) {
@@ -277,10 +293,14 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
       setDesigning(false);
     }
     setGarment(g);
-    // Kick off the full photo set for every option; each is cached per option.
+    // Spend follows attention: a cheap preview thumb for every option card,
+    // and the full catalogue set only for the selected design.
+    const vibe = resp.style.vibeName;
     set.options.forEach((design, idx) => {
-      void ensureImages(g, idx, design, resp.style.vibeName);
+      void ensureImages(g, idx, design, vibe, "preview");
     });
+    const chosen = set.options[selectedIdx] ?? set.options[0];
+    if (chosen) void ensureImages(g, selectedIdx, chosen, vibe, "full");
   }
 
   // Re-hydrate a saved run after a refresh: restore persona + designs instantly,
@@ -289,10 +309,11 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     runRef.current = cached;
     setData(cached.data);
     setDesigns(cached.designs);
+    setSelOpt(cached.selOpt ?? {});
     setGarment("sweater");
     setPhase("ready");
     runId.current += 1;
-    void runDesign(cached.data, "sweater", cached.designs);
+    void runDesign(cached.data, "sweater", cached.designs, cached.selOpt?.sweater ?? 0);
   }
 
   async function runAnalyze(handle: string) {
@@ -313,18 +334,19 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
       const resp = await postJson<AnalyzeResponse>("/api/analyze", { handle });
       setData(resp);
       runRef.current = {
-        v: 2,
+        v: 3,
         handle,
         savedAt: Date.now(),
         data: resp,
         designs: {},
         jobs: {},
+        selOpt: {},
         vibe: resp.style.vibeName,
       };
       saveRun(runRef.current);
       setGarment("sweater");
       setPhase("ready");
-      void runDesign(resp, "sweater", {});
+      void runDesign(resp, "sweater", {}, 0);
     } catch (e) {
       setAnalyzeError(e instanceof Error ? e.message : "Analysis failed.");
       setPhase("error");
@@ -346,7 +368,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     if (!data || g === garment) return;
     setOrder(null);
     setOrderError(null);
-    void runDesign(data, g, designs);
+    void runDesign(data, g, designs, selOpt[g] ?? 0);
   }
 
   function selectOption(idx: number) {
@@ -354,6 +376,13 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setOrder(null);
     setOrderError(null);
     setSelOpt((prev) => ({ ...prev, [garment]: idx }));
+    persistPatch({ selOpt: { ...(runRef.current?.selOpt ?? {}), [garment]: idx } });
+    // Selecting an option is what triggers its full catalogue set (cached, so
+    // re-selecting a previously rendered option costs nothing).
+    const design = designs[garment]?.options[idx];
+    if (data && design) {
+      void ensureImages(garment, idx, design, data.style.vibeName, "full");
+    }
   }
 
   async function placeOrder(size: string) {
@@ -454,7 +483,9 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
               </p>
               <button
                 type="button"
-                onClick={() => data && void runDesign(data, garment, designs)}
+                onClick={() =>
+                  data && void runDesign(data, garment, designs, selOpt[garment] ?? 0)
+                }
                 className="mt-3 text-[0.62rem] font-medium uppercase tracking-luxe text-burgundy underline underline-offset-2 hover:text-burgundy-deep"
               >
                 Try again
@@ -468,11 +499,16 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
               <OptionPicker
                 options={current.options}
                 selected={optIdx}
-                thumbs={current.options.map((_, i) => images[imgKey(garment, i)]?.[0])}
+                thumbs={current.options.map(
+                  (_, i) =>
+                    images[thumbKey(garment, i)]?.[0] ?? images[imgKey(garment, i)]?.[0],
+                )}
                 rendering={current.options.map(
                   (_, i) =>
-                    (pending[imgKey(garment, i)] ?? 0) > 0 &&
-                    (images[imgKey(garment, i)]?.length ?? 0) === 0,
+                    ((pending[thumbKey(garment, i)] ?? 0) > 0 ||
+                      (pending[imgKey(garment, i)] ?? 0) > 0) &&
+                    !images[thumbKey(garment, i)]?.[0] &&
+                    !images[imgKey(garment, i)]?.[0],
                 )}
                 onSelect={selectOption}
               />
@@ -482,6 +518,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
           <DesignGallery
             key={currentKey}
             images={images[currentKey] ?? []}
+            preview={images[thumbKey(garment, optIdx)]?.[0]}
             pending={pending[currentKey] ?? 0}
             designing={designing}
             error={imgErrors[currentKey] ?? null}

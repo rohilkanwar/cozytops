@@ -1,4 +1,5 @@
 import type { DesignBrief, GarmentType, ShotKind } from "../types";
+import { config } from "../config";
 import {
   startImageJob,
   pollImageJob,
@@ -120,16 +121,22 @@ export function altFor(brief: DesignBrief, shot: ShotKind): string {
     : `${brief.title} worn by a model`;
 }
 
-/** Starts a background image job for one shot; returns the job id. */
+/**
+ * Starts a background image job for one shot; returns the job id.
+ * The "preview" tier renders cheaper thumbnails for option cards; "full" is
+ * the catalogue-quality set for the selected design.
+ */
 export async function startGarmentJob(
   brief: DesignBrief,
   shot: ShotKind,
   variant: number,
   vibe: string,
+  tier: "preview" | "full" = "full",
 ): Promise<string> {
   const prompt = buildImagePrompt(brief, shot, variant, vibe);
   const size: ImageSize = shot === "model" ? "1024x1792" : "1024x1024";
-  return startImageJob(prompt, size);
+  const quality = tier === "preview" ? config.image.previewQuality : config.image.quality;
+  return startImageJob(prompt, size, quality);
 }
 
 export { pollImageJob };

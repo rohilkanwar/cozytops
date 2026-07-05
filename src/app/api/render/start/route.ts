@@ -13,6 +13,8 @@ const bodySchema = z.object({
   shot: z.enum(["product", "model"]),
   variant: z.number().int().min(0).max(4).default(0),
   vibe: z.string().default(""),
+  // "preview" = cheap option-card thumbnail; "full" = catalogue quality.
+  tier: z.enum(["preview", "full"]).default("full"),
 });
 
 export async function POST(req: Request) {
@@ -25,7 +27,13 @@ export async function POST(req: Request) {
 
   const design = parsed.design as unknown as DesignBrief;
   try {
-    const jobId = await startGarmentJob(design, parsed.shot, parsed.variant, parsed.vibe);
+    const jobId = await startGarmentJob(
+      design,
+      parsed.shot,
+      parsed.variant,
+      parsed.vibe,
+      parsed.tier,
+    );
     return NextResponse.json({
       jobId,
       kind: parsed.shot,

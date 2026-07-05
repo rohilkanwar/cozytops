@@ -23,15 +23,20 @@ function CrestMark() {
 }
 
 // Photography-only gallery: real generated shots of the selected design.
-// While shots render it shows a loading state — never a placeholder design.
+// While the full set renders, the option's preview photo stands in (with a
+// progress pill); with no preview yet, a loading state — never a placeholder
+// design.
 export function DesignGallery({
   images,
+  preview,
   pending,
   designing,
   error,
   onRetry,
 }: {
   images: GarmentImage[];
+  /** The option's cheap preview shot, shown while the full set renders. */
+  preview?: GarmentImage;
   pending: number;
   designing: boolean;
   error?: string | null;
@@ -39,12 +44,13 @@ export function DesignGallery({
 }) {
   const [picked, setPicked] = useState<number | null>(null);
   const selIdx = picked !== null && picked < images.length ? picked : 0;
-  const selImage = images[selIdx];
+  const selImage = images[selIdx] ?? (images.length === 0 ? preview : undefined);
 
   const waitingForFirstPhoto = images.length === 0 && pending > 0;
-  const caption = selImage
-    ? `${KIND_LABEL[selImage.kind] ?? "Photograph"} · ${selIdx + 1}/${images.length + pending}`
-    : "";
+  const caption =
+    images.length > 0 && images[selIdx]
+      ? `${KIND_LABEL[images[selIdx].kind] ?? "Photograph"} · ${selIdx + 1}/${images.length + pending}`
+      : "";
 
   return (
     <div className="card overflow-hidden">
@@ -72,6 +78,13 @@ export function DesignGallery({
               {designing ? "this takes a few moments" : "about a minute or two"}
             </span>
           </div>
+        )}
+
+        {waitingForFirstPhoto && selImage && (
+          <span className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-cozy bg-cream/90 px-3.5 py-1.5 text-[0.58rem] font-medium uppercase tracking-luxe text-ink/65 shadow-cozy-sm backdrop-blur">
+            <span className="h-2.5 w-2.5 animate-spin rounded-full border border-oat border-t-burgundy" />
+            Finishing the full shoot
+          </span>
         )}
 
         {caption && (

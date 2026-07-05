@@ -45,6 +45,13 @@ export const config = {
       | "medium"
       | "high"
       | "auto",
+    // Cheaper tier for option-card thumbnails; the full set renders at
+    // `quality` only for the design the visitor actually selects.
+    previewQuality: (process.env.IMAGE_PREVIEW_QUALITY || "medium") as
+      | "low"
+      | "medium"
+      | "high"
+      | "auto",
     get enabled() {
       const provider =
         process.env.IMAGE_PROVIDER ||
