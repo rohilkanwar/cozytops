@@ -25,6 +25,19 @@ export const config = {
     apifyToken: process.env.APIFY_TOKEN || "",
   },
 
+  affiliate: {
+    // Amazon Associates tracking tag (e.g. "cozytops-20"). Appended to Amazon
+    // links when set.
+    amazonTag: process.env.AMAZON_ASSOCIATE_TAG || "",
+    // Skimlinks publisher site id. When set, non-Amazon merchant links are
+    // wrapped via go.skimresources.com so ~48k merchants pay out through one
+    // account.
+    skimlinksId: process.env.SKIMLINKS_SITE_ID || "",
+    get monetized() {
+      return Boolean(process.env.AMAZON_ASSOCIATE_TAG || process.env.SKIMLINKS_SITE_ID);
+    },
+  },
+
   fulfillment: {
     provider: (process.env.FULFILLMENT_PROVIDER || "demo") as
       | "demo"

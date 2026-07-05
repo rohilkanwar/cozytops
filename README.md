@@ -34,7 +34,13 @@ Instagram handle ─▶ Style read ─▶ Custom design ─▶ Photos ─▶ Ord
    manufacturable `DesignBrief` options (named piece, color story, pattern,
    personification story — monogram only as an occasional accent), each
    rendered as real product + on-model photography.
-4. **`/api/checkout`** hands the design + size to a fulfillment provider.
+4. **`/api/shop`** turns the style read into "Shop the vibe" — concrete,
+   style-matched picks at real retailers (Amazon, Nordstrom, Etsy, ASOS,
+   Uniqlo, Everlane, Madewell, Zara), deep-linked through your affiliate
+   credentials (`AMAZON_ASSOCIATE_TAG` for Amazon, `SKIMLINKS_SITE_ID` for
+   everyone else). Links carry rel="sponsored" and the UI shows a commission
+   disclosure whenever monetization is active.
+5. **`/api/checkout`** hands the design + size to a fulfillment provider.
 
 ## No silent fallbacks
 
@@ -99,6 +105,7 @@ src/
     api/
       analyze/route.ts       handle  -> InstagramProfile + StyleProfile
       design/route.ts        style   -> 4 DesignBrief options
+      shop/route.ts          style   -> affiliate-linked retail picks
       checkout/route.ts      design  -> OrderConfirmation
   components/
     create/                  The end-to-end client experience + sub-views

@@ -136,6 +136,37 @@ export interface OrderConfirmation {
   message: string;
 }
 
+// --- Shop-the-vibe (affiliate recommendations) ------------------------------
+
+export type ShopMerchant =
+  | "amazon"
+  | "etsy"
+  | "nordstrom"
+  | "asos"
+  | "madewell"
+  | "everlane"
+  | "zara"
+  | "uniqlo";
+
+/** A style-matched, shoppable recommendation deep-linking into a merchant. */
+export interface ShopRecommendation {
+  merchant: ShopMerchant;
+  merchantLabel: string;
+  /** Short display title, e.g. "Cream fisherman cable-knit crew". */
+  title: string;
+  /** One sentence tying the pick to the visitor's style, second person. */
+  why: string;
+  priceBand: "$" | "$$" | "$$$";
+  /** Outbound merchant URL (affiliate-tagged/wrapped when configured). */
+  url: string;
+}
+
+export interface ShopResponse {
+  recommendations: ShopRecommendation[];
+  /** True when affiliate credentials are configured (drives the disclosure). */
+  monetized: boolean;
+}
+
 // --- API payloads ----------------------------------------------------------
 
 export interface AnalyzeResponse {

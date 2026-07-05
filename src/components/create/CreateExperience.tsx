@@ -9,6 +9,7 @@ import type {
   GarmentImage,
   GarmentType,
   OrderConfirmation,
+  ShopResponse,
   ShotKind,
 } from "@/lib/types";
 import { AnalyzingView } from "./AnalyzingView";
@@ -18,6 +19,7 @@ import { OptionPicker } from "./OptionPicker";
 import { DesignGallery } from "./DesignGallery";
 import { DesignDetails } from "./DesignDetails";
 import { CheckoutPanel } from "./CheckoutPanel";
+import { ShopTheVibe } from "./ShopTheVibe";
 import { HandleInput } from "../HandleInput";
 
 type Phase = "idle" | "analyzing" | "ready" | "error";
@@ -58,6 +60,8 @@ type PersistedRun = {
   jobs: Record<string, PersistedJob[]>;
   /** Selected option per garment, so a refresh resumes the same design. */
   selOpt: Partial<Record<GarmentType, number>>;
+  /** Cached shop-the-vibe recommendations per garment. */
+  shop?: Partial<Record<GarmentType, ShopResponse>>;
   vibe: string;
 };
 
@@ -106,6 +110,10 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   const [order, setOrder] = useState<OrderConfirmation | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
 
+  // Affiliate "shop the vibe" picks, fetched + cached per garment.
+  const [shop, setShop] = useState<Partial<Record<GarmentType, ShopResponse>>>({});
+  const [shopErrors, setShopErrors] = useState<Partial<Record<GarmentType, string>>>({});
+
   // Photorealistic images, generated + cached per garment option ("g:opt").
   const [images, setImages] = useState<Record<string, GarmentImage[]>>({});
   const [pending, setPending] = useState<Record<string, number>>({});
@@ -113,6 +121,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
 
   const lastHandle = useRef<string | null>(null);
   const startedImages = useRef<Set<string>>(new Set());
+  const startedShop = useRef<Set<GarmentType>>(new Set());
   const runId = useRef(0);
   const runRef = useRef<PersistedRun | null>(null);
 
@@ -261,12 +270,40 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     void ensureImages(g, opt, design, data.style.vibeName, "full");
   }
 
+  // Fetches style-matched affiliate picks for a garment (cached in memory and
+  // in the persisted run, so tab switches and refreshes never refetch).
+  async function ensureShop(g: GarmentType, resp: AnalyzeResponse) {
+    if (startedShop.current.has(g)) return;
+    startedShop.current.add(g);
+    const cached = runRef.current?.shop?.[g];
+    if (cached) {
+      setShop((prev) => ({ ...prev, [g]: cached }));
+      return;
+    }
+    setShopErrors((prev) => ({ ...prev, [g]: undefined }));
+    try {
+      const s = await postJson<ShopResponse>("/api/shop", {
+        style: resp.style,
+        garment: g,
+      });
+      setShop((prev) => ({ ...prev, [g]: s }));
+      persistPatch({ shop: { ...(runRef.current?.shop ?? {}), [g]: s } });
+    } catch (e) {
+      startedShop.current.delete(g);
+      setShopErrors((prev) => ({
+        ...prev,
+        [g]: e instanceof Error ? e.message : "Shop recommendations failed.",
+      }));
+    }
+  }
+
   async function runDesign(
     resp: AnalyzeResponse,
     g: GarmentType,
     cache: typeof designs,
     selectedIdx: number,
   ) {
+    void ensureShop(g, resp);
     let set = cache[g];
     setDesignErrors((prev) => ({ ...prev, [g]: undefined }));
     if (!set) {
@@ -310,6 +347,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setData(cached.data);
     setDesigns(cached.designs);
     setSelOpt(cached.selOpt ?? {});
+    setShop(cached.shop ?? {});
     setGarment("sweater");
     setPhase("ready");
     runId.current += 1;
@@ -326,7 +364,10 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setPending({});
     setImgErrors({});
     setDesignErrors({});
+    setShop({});
+    setShopErrors({});
     startedImages.current.clear();
+    startedShop.current.clear();
     runId.current += 1;
     setOrder(null);
     setOrderError(null);
@@ -537,6 +578,13 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
             order={order}
             orderError={orderError}
             onOrder={placeOrder}
+          />
+
+          <ShopTheVibe
+            shop={shop[garment]}
+            loading={!shop[garment] && !shopErrors[garment]}
+            error={shopErrors[garment] ?? null}
+            onRetry={() => data && void ensureShop(garment, data)}
           />
         </div>
       </div>
