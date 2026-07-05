@@ -1,5 +1,4 @@
 import type { DesignBrief, GarmentType, ShotKind } from "../types";
-import { config } from "../config";
 import {
   startImageJob,
   pollImageJob,
@@ -112,10 +111,6 @@ export function buildImagePrompt(
     "Soft natural directional light, warm filmic colour grade reminiscent of Kodak Portra 400, fine film grain, three-quarter-body framing, photographed on a medium-format camera with an 80mm lens at a shallow depth of field.",
     "Refined, relaxed styling; natural skin texture; lifelike fabric detail; photorealistic. The garment is the hero of the shot. No text, no logo, no watermark.",
   ].join(" ");
-}
-
-export function imageProviderEnabled(): boolean {
-  return config.image.enabled;
 }
 
 /** Alt text for a generated shot. */

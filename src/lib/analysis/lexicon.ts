@@ -1,9 +1,8 @@
 import type { ColorSwatch } from "../types";
 
 // ---------------------------------------------------------------------------
-// Style lexicon: the knowledge base behind the deterministic (no-API-key)
-// analyzer. Each aesthetic maps keywords -> a coherent style world. The same
-// vocabulary also seeds Claude's prompt context.
+// Style lexicon: example vibe directions that season the analysis model's
+// prompt (it is not limited to these), plus vocabulary for demo personas.
 // ---------------------------------------------------------------------------
 
 export interface AestheticDef {

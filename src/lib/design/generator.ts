@@ -1,16 +1,12 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { DesignBrief, GarmentType, StyleProfile } from "../types";
-import { config } from "../config";
-import { getAnthropic, extractJson } from "../anthropic";
+import { openaiJson } from "../openai";
+
+// Design briefs are always model-authored from the real style profile. There
+// is no heuristic fallback: if generation fails, we throw and the API
+// surfaces the error loudly.
 
 const PATTERNS = ["solid", "stripes", "fairisle", "colorblock", "speckle", "gradient"] as const;
-
-const GARMENT_NOUN: Record<GarmentType, string> = {
-  sweater: "Knit",
-  tee: "Tee",
-  jacket: "Jacket",
-};
 
 const GARMENT_MATERIAL: Record<GarmentType, string> = {
   sweater: "Mid-weight combed-cotton knit, 320gsm, with ribbed collar and cuffs",
@@ -23,75 +19,6 @@ function hexClean(h: string, fallback: string): string {
   if (!m) return fallback;
   const v = m[0];
   return v.startsWith("#") ? v : `#${v}`;
-}
-
-function initials(style: StyleProfile, displayName?: string): string {
-  const src = (displayName || style.handle || "").replace(/[._]+/g, " ").trim();
-  const words = src.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return "CT";
-}
-
-function inferPattern(style: StyleProfile, garment: GarmentType): DesignBrief["pattern"] {
-  // Dominant signals only (vibe + motifs + textures + affinities). style.aesthetics
-  // is excluded since it can blend in a runner-up tag and muddy the read.
-  const blob = [
-    style.vibeName,
-    ...style.motifs,
-    ...style.textures,
-    ...style.garmentAffinities,
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  if (/colorblock|color-block|maximal|clash|gallery|vibrant/.test(blob)) return "colorblock";
-  if (/stripe|breton|coastal|wave|nautical/.test(blob)) return "stripes";
-  if (/fair ?isle|cottage|wildflower|embroider|heirloom|floral/.test(blob))
-    return garment === "sweater" ? "fairisle" : "speckle";
-  if (/monochrome|techwear|utility|greyscale|all ?black|negative space/.test(blob))
-    return garment === "sweater" ? "colorblock" : "solid";
-  if (/denim|vintage|thrift|rust|worn|heather|speckle/.test(blob)) return "speckle";
-  if (/knit/.test(blob)) return garment === "sweater" ? "fairisle" : "speckle";
-  return garment === "tee" ? "solid" : "stripes";
-}
-
-/** Deterministic design brief — always available, no API key required. */
-export function designHeuristic(
-  style: StyleProfile,
-  garment: GarmentType,
-  displayName?: string,
-): DesignBrief {
-  const palette = style.palette.length
-    ? style.palette
-    : [{ name: "Clay", hex: "#B7755A" }];
-  const primaryColor = hexClean(palette[0].hex, "#B7755A");
-  const secondaryColor = hexClean(palette[1]?.hex ?? palette[0].hex, "#E7DAC4");
-  const accentColor = hexClean(
-    palette[palette.length - 1]?.hex ?? palette[0].hex,
-    "#2C2A28",
-  );
-
-  const noun = GARMENT_NOUN[garment];
-  const title = `The ${style.vibeName} ${noun}`;
-  const trait = style.personaTraits[0] ?? "easygoing";
-  const story = `Cut just for @${style.handle}: ${style.signatureMotif}, carried in your ${palette[0].name.toLowerCase()} and ${(palette[palette.length - 1]?.name ?? "ink").toLowerCase()}. A ${trait} piece that wears like it has always been yours.`;
-
-  return {
-    garment,
-    title,
-    story,
-    palette: palette.slice(0, 5),
-    primaryColor,
-    secondaryColor,
-    accentColor,
-    pattern: inferPattern(style, garment),
-    motifs: style.motifs.slice(0, 3),
-    monogram: initials(style, displayName),
-    placementNotes: `${style.signatureMotif} interpreted across the body; a small monogram patch at the left chest.`,
-    materials: GARMENT_MATERIAL[garment],
-    careVibe: "Soft enough for slow Sundays, sturdy enough to make it a signature.",
-  };
 }
 
 const briefSchema = z.object({
@@ -143,20 +70,18 @@ Respond with ONLY a JSON object (no prose, no code fence):
   "careVibe": string
 }`;
 
-async function designWithClaude(
-  client: Anthropic,
+/** Authors the design brief with the model. Throws (loudly) when it can't. */
+export async function generateDesign(
   style: StyleProfile,
   garment: GarmentType,
   displayName?: string,
-): Promise<DesignBrief> {
-  const resp = await client.messages.create({
-    model: config.anthropic.model,
-    max_tokens: 1200,
-    system: SYSTEM_PROMPT,
-    messages: [
+): Promise<{ design: DesignBrief; engine: "openai" }> {
+  const raw = await openaiJson({
+    instructions: SYSTEM_PROMPT,
+    content: [
       {
-        role: "user",
-        content: `Design a custom ${garment} for @${style.handle}${displayName ? ` (${displayName})` : ""}.
+        type: "input_text",
+        text: `Design a custom ${garment} for @${style.handle}${displayName ? ` (${displayName})` : ""}.
 
 STYLE PROFILE
 Vibe: ${style.vibeName}
@@ -172,49 +97,31 @@ Palette: ${style.palette.map((p) => `${p.name} ${p.hex}`).join(", ")}
 Design the ${garment}. Make the personification unmistakable.`,
       },
     ],
+    maxOutputTokens: 1200,
   });
 
-  const text = resp.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
-
-  const raw = extractJson<unknown>(text);
   const parsed = briefSchema.safeParse(raw);
-  if (!parsed.success) throw new Error("Claude design failed validation");
+  if (!parsed.success) {
+    throw new Error("The design brief failed validation — please try again.");
+  }
 
   const d = parsed.data;
   return {
-    garment,
-    title: d.title,
-    story: d.story,
-    palette: d.palette,
-    primaryColor: hexClean(d.primaryColor, d.palette[0].hex),
-    secondaryColor: hexClean(d.secondaryColor, d.palette[1]?.hex ?? d.palette[0].hex),
-    accentColor: hexClean(d.accentColor, d.palette[d.palette.length - 1].hex),
-    pattern: d.pattern,
-    motifs: d.motifs.length ? d.motifs : style.motifs.slice(0, 3),
-    monogram: d.monogram,
-    placementNotes: d.placementNotes || `${style.signatureMotif} across the body.`,
-    materials: d.materials || GARMENT_MATERIAL[garment],
-    careVibe: d.careVibe || "Made to become a signature.",
+    engine: "openai",
+    design: {
+      garment,
+      title: d.title,
+      story: d.story,
+      palette: d.palette,
+      primaryColor: hexClean(d.primaryColor, d.palette[0].hex),
+      secondaryColor: hexClean(d.secondaryColor, d.palette[1]?.hex ?? d.palette[0].hex),
+      accentColor: hexClean(d.accentColor, d.palette[d.palette.length - 1].hex),
+      pattern: d.pattern,
+      motifs: d.motifs.length ? d.motifs : style.motifs.slice(0, 3),
+      monogram: d.monogram,
+      placementNotes: d.placementNotes || `${style.signatureMotif} across the body.`,
+      materials: d.materials || GARMENT_MATERIAL[garment],
+      careVibe: d.careVibe || "Made to become a signature.",
+    },
   };
-}
-
-/** Orchestrates design generation: Claude when available, heuristic otherwise. */
-export async function generateDesign(
-  style: StyleProfile,
-  garment: GarmentType,
-  displayName?: string,
-): Promise<{ design: DesignBrief; engine: "claude" | "heuristic" }> {
-  const client = getAnthropic();
-  if (client) {
-    try {
-      const design = await designWithClaude(client, style, garment, displayName);
-      return { design, engine: "claude" };
-    } catch {
-      // fall through
-    }
-  }
-  return { design: designHeuristic(style, garment, displayName), engine: "heuristic" };
 }

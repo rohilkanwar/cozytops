@@ -48,9 +48,10 @@ function newOrderId(): string {
 }
 
 /**
- * Places an order with the configured fulfillment partner. In demo mode (and
- * whenever a real partner isn't reachable) this returns a simulated, clearly
- * labeled confirmation so the UX flow is always complete.
+ * Places an order with the configured fulfillment partner. No silent
+ * fallbacks: if a real partner is configured and fails, the error propagates
+ * to the caller instead of pretending the order went through. Only the
+ * explicit demo provider returns a simulated (clearly labeled) confirmation.
  */
 export async function createOrder(req: OrderRequest): Promise<OrderConfirmation> {
   const product = getProduct(req.garment);
@@ -65,14 +66,9 @@ export async function createOrder(req: OrderRequest): Promise<OrderConfirmation>
       return await createShopifyOrder(req, { orderId, totalUsd, product });
     } catch (err) {
       const reason = err instanceof Error ? err.message : "unknown error";
-      return {
-        orderId,
-        status: "simulated",
-        provider: "demo",
-        etaDays: product.leadTimeDays,
-        totalUsd,
-        message: `Fulfillment partner unavailable (${reason}). Order simulated — wire up credentials to ship for real.`,
-      };
+      throw new Error(
+        `Fulfillment via ${config.fulfillment.provider} failed: ${reason}. The order was NOT placed.`,
+      );
     }
   }
 
@@ -82,6 +78,6 @@ export async function createOrder(req: OrderRequest): Promise<OrderConfirmation>
     provider: "demo",
     etaDays: product.leadTimeDays,
     totalUsd,
-    message: `Demo order confirmed for the ${product.name}. In production this hands off to your print-on-demand / Shopify partner for manufacturing + shipping.`,
+    message: `SIMULATED order for the ${product.name} — no real fulfillment is configured, nothing will be manufactured or shipped. Set FULFILLMENT_PROVIDER=printful or shopify to ship for real.`,
   };
 }

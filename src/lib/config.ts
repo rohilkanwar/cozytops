@@ -4,16 +4,20 @@
 export const config = {
   appName: process.env.NEXT_PUBLIC_APP_NAME || "Cozy Tops",
 
-  anthropic: {
-    apiKey: process.env.ANTHROPIC_API_KEY || "",
-    model: process.env.CLAUDE_MODEL || "claude-opus-4-8",
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || "",
+    // Text + vision reasoning model (style analysis, design briefs).
+    textModel: process.env.OPENAI_TEXT_MODEL || "gpt-4.1",
     get enabled() {
-      return Boolean(process.env.ANTHROPIC_API_KEY);
+      return Boolean(process.env.OPENAI_API_KEY);
     },
   },
 
   instagram: {
-    provider: (process.env.INSTAGRAM_PROVIDER || "demo") as
+    // No default: an unset provider fails loudly rather than silently serving
+    // sample personas. "demo" must be chosen explicitly.
+    provider: (process.env.INSTAGRAM_PROVIDER || "") as
+      | ""
       | "demo"
       | "graph"
       | "apify",

@@ -14,6 +14,11 @@ const RESPONSES_URL = "https://api.openai.com/v1/responses";
 const ORCHESTRATOR_MODEL = process.env.OPENAI_ORCHESTRATOR_MODEL || "gpt-4.1-mini";
 
 function headers() {
+  if (!config.image.openaiKey) {
+    throw new Error(
+      "OPENAI_API_KEY is not configured — photorealistic rendering is unavailable.",
+    );
+  }
   return {
     Authorization: `Bearer ${config.image.openaiKey}`,
     "Content-Type": "application/json",

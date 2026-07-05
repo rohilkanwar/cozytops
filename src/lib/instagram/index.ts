@@ -77,8 +77,11 @@ export function buildDemoProfile(handle: string): InstagramProfile {
 }
 
 /**
- * Resolves a handle to a profile using the configured provider, falling back to
- * the demo persona when a real provider is selected but unavailable.
+ * Resolves a handle to a profile using the configured provider. No silent
+ * fallbacks: if a live source is configured and fails, the error propagates;
+ * if nothing is configured, we refuse rather than serve sample data as real.
+ * Demo personas exist only behind an explicit INSTAGRAM_PROVIDER=demo, and are
+ * always labeled as such via the notice.
  */
 export async function resolveInstagramProfile(
   rawHandle: string,
@@ -88,24 +91,31 @@ export async function resolveInstagramProfile(
     throw new Error("Please enter a valid Instagram handle.");
   }
 
-  if (config.instagram.provider === "demo") {
+  const provider = config.instagram.provider;
+
+  if (provider === "demo") {
     return {
       profile: buildDemoProfile(handle),
-      notice: `Demo mode: this is a sample persona, not a live read of @${handle}. Connect a live Instagram source to analyze the real account.`,
+      notice: `Demo mode is explicitly enabled (INSTAGRAM_PROVIDER=demo): this is a sample persona, NOT a live read of @${handle}.`,
     };
   }
 
-  try {
-    const profile =
-      config.instagram.provider === "graph"
-        ? await fetchViaGraph(handle)
-        : await fetchViaApify(handle);
-    return { profile };
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : "unknown error";
-    return {
-      profile: buildDemoProfile(handle),
-      notice: `Live Instagram source unavailable (${reason}). Showing a demo persona instead.`,
-    };
+  if (provider === "graph" || provider === "apify") {
+    try {
+      const profile =
+        provider === "graph"
+          ? await fetchViaGraph(handle)
+          : await fetchViaApify(handle);
+      return { profile };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "unknown error";
+      throw new Error(
+        `Couldn't fetch @${handle} from Instagram via ${provider}: ${reason}`,
+      );
+    }
   }
+
+  throw new Error(
+    `No Instagram source is configured, so @${handle} cannot actually be analyzed. Set INSTAGRAM_PROVIDER=apify with an APIFY_TOKEN (licensed public-data vendor), or INSTAGRAM_PROVIDER=demo for clearly-labeled sample personas.`,
+  );
 }

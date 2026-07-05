@@ -1,12 +1,13 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { InstagramProfile, StyleProfile } from "../types";
-import { config } from "../config";
-import { getAnthropic, extractJson } from "../anthropic";
-import { analyzeHeuristic } from "./heuristic";
+import { openaiJson, type OpenAiContentBlock } from "../openai";
 import { AESTHETICS } from "./lexicon";
 
-export type AnalysisEngine = "claude-vision" | "claude-text" | "heuristic";
+// Style analysis is always a real model read (GPT vision over the person's
+// actual posts). There is no heuristic fallback: if the model can't run or its
+// answer doesn't validate, we throw and the API surfaces the error loudly.
+
+export type AnalysisEngine = "openai-vision" | "openai-text";
 
 const swatchSchema = z.object({
   name: z.string().default("Tone"),
@@ -36,9 +37,9 @@ const styleSchema = z.object({
 /** Best-effort: fetch a few post images and encode them for true vision input. */
 async function buildImageBlocks(
   profile: InstagramProfile,
-): Promise<Anthropic.ImageBlockParam[]> {
+): Promise<OpenAiContentBlock[]> {
   const withUrls = profile.posts.filter((p) => p.imageUrl).slice(0, 6);
-  const blocks: Anthropic.ImageBlockParam[] = [];
+  const blocks: OpenAiContentBlock[] = [];
 
   await Promise.all(
     withUrls.map(async (p) => {
@@ -53,19 +54,11 @@ async function buildImageBlocks(
         const buf = Buffer.from(await res.arrayBuffer());
         if (buf.byteLength > 4_500_000) return; // keep payloads sane
         blocks.push({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: type.split(";")[0] as
-              | "image/jpeg"
-              | "image/png"
-              | "image/webp"
-              | "image/gif",
-            data: buf.toString("base64"),
-          },
+          type: "input_image",
+          image_url: `data:${type.split(";")[0]};base64,${buf.toString("base64")}`,
         });
       } catch {
-        /* skip unreachable images */
+        /* skip unreachable images — the engine field reports text vs vision */
       }
     }),
   );
@@ -105,18 +98,18 @@ Respond with ONLY a JSON object (no prose, no code fence) matching exactly:
   "evidence": [{"postId": string, "observation": string}]  // tie reads to posts
 }`;
 
-async function analyzeWithClaude(
-  client: Anthropic,
+/** Runs the real style analysis. Throws (loudly) when it can't. */
+export async function analyzeStyle(
   profile: InstagramProfile,
 ): Promise<{ style: StyleProfile; engine: AnalysisEngine }> {
   const images = await buildImageBlocks(profile);
-  const engine: AnalysisEngine = images.length > 0 ? "claude-vision" : "claude-text";
+  const engine: AnalysisEngine = images.length > 0 ? "openai-vision" : "openai-text";
 
   const vibeMenu = AESTHETICS.map((a) => a.vibeName).join(", ");
 
-  const content: Anthropic.ContentBlockParam[] = [
+  const content: OpenAiContentBlock[] = [
     {
-      type: "text",
+      type: "input_text",
       text: `Analyze this person's style and return the JSON profile.
 
 Handle: @${profile.handle}
@@ -132,44 +125,21 @@ ${buildPostDigest(profile)}`,
     ...images,
   ];
 
-  const resp = await client.messages.create({
-    model: config.anthropic.model,
-    max_tokens: 1600,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content }],
+  const raw = await openaiJson({
+    instructions: SYSTEM_PROMPT,
+    content,
+    maxOutputTokens: 1600,
   });
 
-  const text = resp.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
-
-  const raw = extractJson<unknown>(text);
   const parsed = styleSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new Error("Claude response failed validation");
+    throw new Error(
+      "Style analysis returned an invalid profile — please try again.",
+    );
   }
 
   return {
     style: { handle: profile.handle, ...parsed.data },
     engine,
   };
-}
-
-/**
- * Orchestrates style analysis: Claude when configured, with a guaranteed
- * heuristic fallback so the endpoint never hard-fails.
- */
-export async function analyzeStyle(
-  profile: InstagramProfile,
-): Promise<{ style: StyleProfile; engine: AnalysisEngine }> {
-  const client = getAnthropic();
-  if (client) {
-    try {
-      return await analyzeWithClaude(client, profile);
-    } catch {
-      // fall through to heuristic
-    }
-  }
-  return { style: analyzeHeuristic(profile), engine: "heuristic" };
 }

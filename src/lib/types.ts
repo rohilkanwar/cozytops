@@ -138,8 +138,8 @@ export interface OrderConfirmation {
 export interface AnalyzeResponse {
   profile: InstagramProfile;
   style: StyleProfile;
-  /** Which engine produced the style read. */
-  engine: "claude-vision" | "claude-text" | "heuristic";
+  /** Which engine produced the style read (vision when post images were readable). */
+  engine: "openai-vision" | "openai-text";
   notice?: string;
 }
 
@@ -147,7 +147,7 @@ export interface DesignResponse {
   design: DesignBrief;
   /** Inline SVG markup for the garment mockup. */
   mockupSvg: string;
-  engine: "claude" | "heuristic";
+  engine: "openai";
 }
 
 export type ShotKind = "product" | "model";
@@ -158,10 +158,4 @@ export interface GarmentImage {
   /** A data: URL (base64 PNG) or a remote URL. */
   src: string;
   alt: string;
-}
-
-export interface RenderResponse {
-  image?: GarmentImage;
-  /** True when no image provider is configured — client falls back to SVG. */
-  unavailable?: boolean;
 }

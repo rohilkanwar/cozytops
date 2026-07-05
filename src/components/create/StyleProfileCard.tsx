@@ -1,9 +1,8 @@
 import type { AnalyzeResponse } from "@/lib/types";
 
 const ENGINE_LABEL: Record<AnalyzeResponse["engine"], string> = {
-  "claude-vision": "Analysed with Claude vision",
-  "claude-text": "Analysed with Claude",
-  heuristic: "Style read · demo engine",
+  "openai-vision": "Analysed with GPT vision — real post photos",
+  "openai-text": "Analysed with GPT — captions + bio only",
 };
 
 function initials(name: string): string {

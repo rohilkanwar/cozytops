@@ -8,43 +8,46 @@ together — then designs a custom **sweater**, **tee**, or **jacket** made just
 for you, complete with a *personification* detail pulled straight from who you
 are. Approve it, and a partner studio handles manufacturing and shipping.
 
-This repo is the **customer-facing experience**. It runs end-to-end today in a
-self-contained **demo mode** (no scraping, no credentials), with clean seams to
-drop in real data + fulfillment partners when you're ready to go live.
+This repo is the **customer-facing experience**. Every stage is real — live
+Instagram data, GPT vision analysis, model-authored designs, photorealistic
+imagery — and there are **no silent fallbacks**: a stage that can't run its
+real pipeline fails loudly instead of quietly serving sample data.
 
 ---
 
 ## The experience
 
 ```
-Instagram handle ─▶ Style read ─▶ Custom design ─▶ Mockup ─▶ Order
-   (provider)        (Claude /      (Claude /        (SVG)     (Printful /
-                      heuristic)     heuristic)                 Shopify / demo)
+Instagram handle ─▶ Style read ─▶ Custom design ─▶ Photos ─▶ Order
+  (Apify/Graph)      (GPT vision)   (GPT-authored     (gpt-      (Printful /
+                                     brief)            image-2)   Shopify / demo)
 ```
 
 1. **Share a handle** on the landing page.
-2. **`/api/analyze`** resolves the profile and runs the style analyzer:
-   multimodal reasoning with Claude over the photos + captions when an API key
-   is present, or a deterministic lexicon-based read otherwise. Returns a
+2. **`/api/analyze`** resolves the profile via the configured Instagram
+   source and runs GPT vision over the real photos + captions. Returns a
    structured `StyleProfile` (vibe name, palette, aesthetics, garment
-   affinities, motifs, a signature detail, and explainable evidence).
+   affinities, motifs, a signature detail, and explainable evidence). If no
+   source is configured or the fetch/analysis fails, the API returns an
+   explicit error — never a sample persona.
 3. **`/api/design`** turns that profile + a chosen garment into a manufacturable
    `DesignBrief` (named piece, color story, pattern, monogram, personification
    story) and renders an SVG mockup.
 4. **`/api/checkout`** hands the design + size to a fulfillment provider.
 
-## Why it works with zero setup
+## No silent fallbacks
 
-Every external dependency is behind an interface with a graceful fallback, so
-the whole flow is demo-able immediately and degrades gracefully in production:
+Each stage requires its configuration and fails loudly when it's missing or
+its provider errors. Sample data only appears behind an explicit opt-in and is
+always labeled as such:
 
-| Capability | With no config (default) | With config |
+| Capability | Unconfigured / provider failure | Configured |
 |---|---|---|
-| Instagram data | Curated demo personas — any handle deterministically resolves to a rich sample persona | `INSTAGRAM_PROVIDER=graph` (Instagram Login, the visitor's own account) or `apify` (a licensed data vendor) |
-| Style analysis | Deterministic lexicon analyzer | Claude multimodal (`ANTHROPIC_API_KEY`) — true vision when post images are available |
-| Garment design | Deterministic design generator | Claude-authored design brief |
-| Mockup | Procedural SVG (always) | (seam to swap in an image-generation model) |
-| Fulfillment | Simulated, clearly-labeled order | `FULFILLMENT_PROVIDER=printful` or `shopify` |
+| Instagram data | Explicit error (`INSTAGRAM_PROVIDER` unset) or the provider's real error — never a stand-in persona | `apify` (licensed data vendor, real public posts) or `graph` (visitor's own account via OAuth). `demo` is an explicit opt-in, labeled "sample persona" |
+| Style analysis | Explicit error | GPT vision over the real post photos (`OPENAI_API_KEY`) |
+| Garment design | Explicit error | GPT-authored design brief |
+| Imagery | Explicit error | gpt-image-2 photorealistic product + on-model shots (async background jobs) |
+| Fulfillment | Real partner failure = error, order NOT placed | `printful` / `shopify`; default `demo` returns a confirmation explicitly marked SIMULATED |
 
 ## Operational notes (the honest part)
 
@@ -75,8 +78,9 @@ cp .env.example .env.local   # optional — everything works without keys
 npm run dev                  # http://localhost:3000
 ```
 
-Add an `ANTHROPIC_API_KEY` to `.env.local` to switch the analyzer + designer
-from the heuristic engine to Claude.
+Set `OPENAI_API_KEY` plus an Instagram source (`INSTAGRAM_PROVIDER=apify` +
+`APIFY_TOKEN`, or `INSTAGRAM_PROVIDER=demo` for labeled sample personas) —
+without them the app fails loudly by design.
 
 ```bash
 npm run build && npm start   # production build
@@ -100,17 +104,17 @@ src/
     Hero, HowItWorks, ...    Landing-page sections
   lib/
     instagram/               Provider interface, demo personas, graph/apify
-    analysis/                Lexicon, heuristic analyzer, Claude vision analyzer
-    design/                  Design generator (Claude + heuristic), SVG mockup
+    analysis/                GPT vision style analyzer (+ lexicon of vibe seeds)
+    design/                  GPT design generator, async image pipeline, SVG mockup
     fulfillment/             Catalog + order orchestration (demo/printful/shopify)
-    anthropic.ts, config.ts, types.ts
+    openai.ts, config.ts, types.ts
 ```
 
 ## Extending it
 
-- **Real style vision:** set `ANTHROPIC_API_KEY`. When posts carry image URLs
-  (real provider), the analyzer fetches and sends them to Claude as image
-  blocks for genuine visual analysis.
+- **Style vision:** when posts carry image URLs (real provider), the analyzer
+  fetches and sends them to GPT as image blocks for genuine visual analysis;
+  the engine badge shows whether vision or text-only analysis ran.
 - **New garments:** add to `CATALOG` (`lib/fulfillment`), `GARMENTS`
   (`components/garmentMeta.ts`), and a silhouette in `lib/design/mockup.ts`.
 - **Image-gen mockups:** swap `renderMockup()` for a call to an
@@ -118,8 +122,9 @@ src/
 
 ## Deploy
 
-The app is a standard Next.js project and needs **no environment variables to
-run** (demo mode). Add `ANTHROPIC_API_KEY` later to switch on the Claude path.
+The app is a standard Next.js project. A live deployment needs
+`OPENAI_API_KEY` and `INSTAGRAM_PROVIDER=apify` + `APIFY_TOKEN` (or an explicit
+`INSTAGRAM_PROVIDER=demo` for labeled sample personas).
 
 ### Vercel (recommended)
 
@@ -128,7 +133,8 @@ Zero-config — Vercel detects Next.js automatically.
 1. Push to GitHub (already done).
 2. At [vercel.com/new](https://vercel.com/new), **Import** the `cozytops` repo.
 3. Framework preset auto-detects **Next.js**; leave build/output settings at
-   defaults. (Optional: add `ANTHROPIC_API_KEY` under *Environment Variables*.)
+   defaults. Add `OPENAI_API_KEY`, `INSTAGRAM_PROVIDER=apify`, and
+   `APIFY_TOKEN` under *Environment Variables*.
 4. **Deploy.** You get a `*.vercel.app` URL; pushes auto-redeploy.
 
 > Note: Vercel's *Production Branch* defaults to the repo's default branch
@@ -146,4 +152,4 @@ scaffolding.
 
 ---
 
-Built with Next.js (App Router), TypeScript, Tailwind, and the Anthropic SDK.
+Built with Next.js (App Router), TypeScript, Tailwind, and the OpenAI API.

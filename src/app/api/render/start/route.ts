@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { startGarmentJob, altFor, imageProviderEnabled } from "@/lib/design/imagegen";
+import { startGarmentJob, altFor } from "@/lib/design/imagegen";
 import type { DesignBrief } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -21,10 +21,6 @@ export async function POST(req: Request) {
     parsed = bodySchema.parse(await req.json());
   } catch {
     return NextResponse.json({ error: "Invalid render request." }, { status: 400 });
-  }
-
-  if (!imageProviderEnabled()) {
-    return NextResponse.json({ unavailable: true });
   }
 
   const design = parsed.design as unknown as DesignBrief;

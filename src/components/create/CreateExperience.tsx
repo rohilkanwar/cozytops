@@ -37,7 +37,6 @@ type StartResponse = {
   jobId?: string;
   kind?: ShotKind;
   alt?: string;
-  unavailable?: boolean;
 };
 type PollResponse = {
   status: "pending" | "completed" | "failed";
@@ -101,11 +100,10 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   const [images, setImages] = useState<Partial<Record<GarmentType, GarmentImage[]>>>({});
   const [pending, setPending] = useState<Partial<Record<GarmentType, number>>>({});
   const [imgErrors, setImgErrors] = useState<Partial<Record<GarmentType, string>>>({});
-  const [imgUnavailable, setImgUnavailable] = useState(false);
+  const [designErrors, setDesignErrors] = useState<Partial<Record<GarmentType, string>>>({});
 
   const lastHandle = useRef<string | null>(null);
   const startedImages = useRef<Set<GarmentType>>(new Set());
-  const imgUnavailableRef = useRef(false);
   const runId = useRef(0);
   const runRef = useRef<PersistedRun | null>(null);
 
@@ -127,7 +125,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     design: DesignResponse["design"],
     vibe: string,
   ) {
-    if (imgUnavailableRef.current || startedImages.current.has(g)) return;
+    if (startedImages.current.has(g)) return;
     startedImages.current.add(g);
     const myRun = runId.current;
     setImgErrors((prev) => ({ ...prev, [g]: undefined }));
@@ -154,12 +152,6 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
             variant,
             vibe,
           });
-          if (r.unavailable) {
-            imgUnavailableRef.current = true;
-            setImgUnavailable(true);
-            setPending((prev) => ({ ...prev, [g]: 0 }));
-            return;
-          }
           if (r.jobId && r.kind && r.alt) {
             fresh.push({ id: r.jobId, kind: r.kind, alt: r.alt });
           }
@@ -243,6 +235,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
 
   async function runDesign(resp: AnalyzeResponse, g: GarmentType, cache: typeof designs) {
     let design = cache[g]?.design;
+    setDesignErrors((prev) => ({ ...prev, [g]: undefined }));
     if (!cache[g]) {
       setDesigning(true);
       try {
@@ -254,8 +247,14 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
         setDesigns((prev) => ({ ...prev, [g]: d }));
         persistPatch({ designs: { ...(runRef.current?.designs ?? {}), [g]: d } });
         design = d.design;
-      } catch {
+      } catch (e) {
+        // No silent failure: surface the design error with a retry.
+        setDesignErrors((prev) => ({
+          ...prev,
+          [g]: e instanceof Error ? e.message : "Design generation failed.",
+        }));
         setDesigning(false);
+        setGarment(g);
         return;
       }
       setDesigning(false);
@@ -414,12 +413,27 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
             <GarmentPicker selected={garment} onSelect={selectGarment} disabled={designing} />
           </div>
 
+          {designErrors[garment] && !current && (
+            <div className="card border-burgundy/25 bg-burgundy/[0.04] p-6">
+              <p className="text-sm leading-relaxed text-burgundy">
+                <span className="font-medium">Design generation failed.</span>{" "}
+                {designErrors[garment]}
+              </p>
+              <button
+                type="button"
+                onClick={() => data && void runDesign(data, garment, designs)}
+                className="mt-3 text-[0.62rem] font-medium uppercase tracking-luxe text-burgundy underline underline-offset-2 hover:text-burgundy-deep"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
           <DesignGallery
             key={garment}
             svg={current?.mockupSvg ?? ""}
             images={images[garment] ?? []}
             pending={pending[garment] ?? 0}
-            unavailable={imgUnavailable}
             designing={designing}
             error={imgErrors[garment] ?? null}
             onRetry={retryImages}

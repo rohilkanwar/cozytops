@@ -14,7 +14,7 @@ export function DesignDetails({
   engine,
 }: {
   design: DesignBrief;
-  engine: "claude" | "heuristic";
+  engine: "openai";
 }) {
   return (
     <div>
@@ -66,7 +66,7 @@ export function DesignDetails({
       </dl>
 
       <p className="mt-5 text-[0.58rem] font-medium uppercase tracking-luxe text-ink/35">
-        {engine === "claude" ? "Designed with Claude" : "Designed · demo engine"}
+        {engine === "openai" ? "Designed with GPT" : engine}
       </p>
     </div>
   );

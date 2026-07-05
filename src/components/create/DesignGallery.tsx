@@ -26,7 +26,6 @@ export function DesignGallery({
   svg,
   images,
   pending,
-  unavailable,
   designing,
   error,
   onRetry,
@@ -34,7 +33,6 @@ export function DesignGallery({
   svg: string;
   images: GarmentImage[];
   pending: number;
-  unavailable: boolean;
   designing: boolean;
   error?: string | null;
   onRetry?: () => void;
@@ -46,7 +44,7 @@ export function DesignGallery({
   const selImageIdx = selected.startsWith("img-") ? Number(selected.slice(4)) : -1;
   const selImage = selImageIdx >= 0 ? images[selImageIdx] : undefined;
 
-  const waitingForFirstPhoto = !unavailable && images.length === 0 && pending > 0;
+  const waitingForFirstPhoto = images.length === 0 && pending > 0;
   const caption = selImage ? KIND_LABEL[selImage.kind] ?? "Photograph" : "Schematic";
 
   return (
@@ -139,11 +137,6 @@ export function DesignGallery({
         </div>
       )}
 
-      {unavailable && (
-        <p className="px-4 pb-4 text-center text-xs text-ink/40">
-          Showing the design schematic — add an image key for photorealistic previews.
-        </p>
-      )}
     </div>
   );
 }
