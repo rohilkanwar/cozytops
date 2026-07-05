@@ -1,6 +1,6 @@
 import { HandleInput } from "./HandleInput";
 
-export function Hero({ mockupSvg }: { mockupSvg: string }) {
+export function Hero() {
   return (
     <section className="relative overflow-hidden">
       <div className="weave-texture absolute inset-0 opacity-70" aria-hidden="true" />
@@ -33,10 +33,14 @@ export function Hero({ mockupSvg }: { mockupSvg: string }) {
 
         <div className="relative animate-fade-up [animation-delay:120ms]">
           <div className="card mx-auto max-w-sm overflow-hidden p-3">
-            <div
-              className="overflow-hidden rounded-cozy bg-cream"
-              dangerouslySetInnerHTML={{ __html: mockupSvg }}
-            />
+            <div className="overflow-hidden rounded-cozy bg-cream">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/landing/hero.jpg"
+                alt="Model in a cream Fair-Isle crewneck knit with sage and slate-blue yoke, photographed on a coastal shore"
+                className="aspect-[4/5] w-full object-cover object-top"
+              />
+            </div>
             <div className="px-3 py-4 text-center">
               <p className="font-display text-xl font-semibold text-ink">
                 The Coastal Heirloom Knit

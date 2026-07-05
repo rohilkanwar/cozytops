@@ -99,8 +99,11 @@ export interface DesignBrief {
   pattern: DesignPattern;
   /** Short motif phrases used as design cues + tiny rendered emblems. */
   motifs: string[];
-  /** 1-3 character monogram embroidered/printed on the chest. */
-  monogram: string;
+  /**
+   * Optional 1-3 character chest monogram. Most designs personalize through
+   * motif/color/story instead — at most one option per set uses a monogram.
+   */
+  monogram?: string;
   /** Where + how the personification lives on the garment. */
   placementNotes: string;
   materials: string;
@@ -144,9 +147,8 @@ export interface AnalyzeResponse {
 }
 
 export interface DesignResponse {
-  design: DesignBrief;
-  /** Inline SVG markup for the garment mockup. */
-  mockupSvg: string;
+  /** 3-4 distinct design directions for the chosen garment. */
+  options: DesignBrief[];
   engine: "openai";
 }
 

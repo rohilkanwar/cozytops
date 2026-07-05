@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { pollImageJob } from "@/lib/design/imagegen";
+import { pollImageJob, type PollResult } from "@/lib/design/imagegen";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// A single quick status check.
+// A batch of quick status checks (one OpenAI GET per id, in parallel).
 export const maxDuration = 20;
 
-const bodySchema = z.object({ id: z.string().min(1) });
+const bodySchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(16) });
 
 export async function POST(req: Request) {
   let parsed;
@@ -16,12 +16,21 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid poll request." }, { status: 400 });
   }
-  try {
-    return NextResponse.json(await pollImageJob(parsed.id));
-  } catch (err) {
-    // Network/transient error — surface as 502 so the client retries.
-    const message = err instanceof Error ? err.message : "Poll failed.";
-    console.error("[render/poll]", message);
-    return NextResponse.json({ status: "failed", error: message }, { status: 502 });
-  }
+
+  const entries = await Promise.all(
+    parsed.ids.map(async (id): Promise<[string, PollResult]> => {
+      try {
+        return [id, await pollImageJob(id)];
+      } catch (err) {
+        // Transient network error for this id — report pending so the client
+        // retries on its next tick; terminal failures come back as "failed"
+        // from pollImageJob itself. The poll loop's attempt cap bounds this.
+        const message = err instanceof Error ? err.message : "poll failed";
+        console.error("[render/poll]", id, message);
+        return [id, { status: "pending" }];
+      }
+    }),
+  );
+
+  return NextResponse.json({ results: Object.fromEntries(entries) });
 }

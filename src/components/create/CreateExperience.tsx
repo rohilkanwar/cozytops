@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type {
   AnalyzeResponse,
+  DesignBrief,
   DesignResponse,
   GarmentImage,
   GarmentType,
@@ -13,6 +14,7 @@ import type {
 import { AnalyzingView } from "./AnalyzingView";
 import { StyleProfileCard } from "./StyleProfileCard";
 import { GarmentPicker } from "./GarmentPicker";
+import { OptionPicker } from "./OptionPicker";
 import { DesignGallery } from "./DesignGallery";
 import { DesignDetails } from "./DesignDetails";
 import { CheckoutPanel } from "./CheckoutPanel";
@@ -38,20 +40,22 @@ type StartResponse = {
   kind?: ShotKind;
   alt?: string;
 };
-type PollResponse = {
+type PollStatus = {
   status: "pending" | "completed" | "failed";
   src?: string;
   error?: string;
 };
+type PollResponse = { results: Record<string, PollStatus> };
 
 type PersistedJob = { id: string; kind: ShotKind; alt: string };
 type PersistedRun = {
-  v: 1;
+  v: 2;
   handle: string;
   savedAt: number;
   data: AnalyzeResponse;
   designs: Partial<Record<GarmentType, DesignResponse>>;
-  jobs: Partial<Record<GarmentType, PersistedJob[]>>;
+  /** Image jobs keyed by "<garment>:<optionIndex>". */
+  jobs: Record<string, PersistedJob[]>;
   vibe: string;
 };
 
@@ -59,6 +63,7 @@ type PersistedRun = {
 // so persisted job ids still resolve to their finished images after a refresh.
 const RUN_TTL_MS = 1000 * 60 * 60 * 24;
 const runKey = (handle: string) => `cozytops:run:${handle.toLowerCase()}`;
+const imgKey = (g: GarmentType, opt: number) => `${g}:${opt}`;
 
 function loadRun(handle: string): PersistedRun | null {
   if (typeof window === "undefined") return null;
@@ -66,7 +71,7 @@ function loadRun(handle: string): PersistedRun | null {
     const raw = window.localStorage.getItem(runKey(handle));
     if (!raw) return null;
     const run = JSON.parse(raw) as PersistedRun;
-    if (run.v !== 1 || !run.data) return null;
+    if (run.v !== 2 || !run.data) return null;
     if (Date.now() - run.savedAt > RUN_TTL_MS) return null;
     return run;
   } catch {
@@ -90,20 +95,21 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
 
   const [garment, setGarment] = useState<GarmentType>("sweater");
   const [designs, setDesigns] = useState<Partial<Record<GarmentType, DesignResponse>>>({});
+  const [selOpt, setSelOpt] = useState<Partial<Record<GarmentType, number>>>({});
   const [designing, setDesigning] = useState(false);
+  const [designErrors, setDesignErrors] = useState<Partial<Record<GarmentType, string>>>({});
 
   const [ordering, setOrdering] = useState(false);
   const [order, setOrder] = useState<OrderConfirmation | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
 
-  // Photorealistic images, generated + cached per garment.
-  const [images, setImages] = useState<Partial<Record<GarmentType, GarmentImage[]>>>({});
-  const [pending, setPending] = useState<Partial<Record<GarmentType, number>>>({});
-  const [imgErrors, setImgErrors] = useState<Partial<Record<GarmentType, string>>>({});
-  const [designErrors, setDesignErrors] = useState<Partial<Record<GarmentType, string>>>({});
+  // Photorealistic images, generated + cached per garment option ("g:opt").
+  const [images, setImages] = useState<Record<string, GarmentImage[]>>({});
+  const [pending, setPending] = useState<Record<string, number>>({});
+  const [imgErrors, setImgErrors] = useState<Record<string, string | undefined>>({});
 
   const lastHandle = useRef<string | null>(null);
-  const startedImages = useRef<Set<GarmentType>>(new Set());
+  const startedImages = useRef<Set<string>>(new Set());
   const runId = useRef(0);
   const runRef = useRef<PersistedRun | null>(null);
 
@@ -116,33 +122,35 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     saveRun(runRef.current);
   }
 
-  // Generates the photoreal shots for a garment. Each shot runs as an OpenAI
-  // background job (started once, then polled) so no request nears the 60s
-  // serverless limit. Job ids are persisted, so a refresh re-polls and the
-  // already-finished images come straight back — nothing is lost or regenerated.
+  // Generates the full photo set (product + 2 on-model) for ONE design option.
+  // Each shot runs as an OpenAI background job (started once, then batch-polled)
+  // so no request nears the serverless limit. Job ids are persisted: a refresh
+  // re-polls and already-finished images come straight back — never regenerated.
   async function ensureImages(
     g: GarmentType,
-    design: DesignResponse["design"],
+    opt: number,
+    design: DesignBrief,
     vibe: string,
   ) {
-    if (startedImages.current.has(g)) return;
-    startedImages.current.add(g);
+    const key = imgKey(g, opt);
+    if (startedImages.current.has(key)) return;
+    startedImages.current.add(key);
     const myRun = runId.current;
-    setImgErrors((prev) => ({ ...prev, [g]: undefined }));
-    setImages((prev) => ({ ...prev, [g]: [] }));
+    setImgErrors((prev) => ({ ...prev, [key]: undefined }));
+    setImages((prev) => ({ ...prev, [key]: prev[key] ?? [] }));
 
     let firstError: string | undefined;
 
     // Reuse persisted job ids when we have them (e.g. after a page refresh);
     // otherwise start a fresh background job per shot.
-    let jobs = runRef.current?.jobs?.[g] ?? null;
+    let jobs = runRef.current?.jobs?.[key] ?? null;
     if (!jobs || jobs.length === 0) {
       const shots: { shot: ShotKind; variant: number }[] = [
         { shot: "product", variant: 0 },
-        { shot: "model", variant: 0 },
-        { shot: "model", variant: 1 },
+        { shot: "model", variant: opt % 3 },
+        { shot: "model", variant: (opt + 1) % 3 },
       ];
-      setPending((prev) => ({ ...prev, [g]: shots.length }));
+      setPending((prev) => ({ ...prev, [key]: shots.length }));
       const fresh: PersistedJob[] = [];
       for (const { shot, variant } of shots) {
         try {
@@ -164,79 +172,88 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
       if (runId.current !== myRun) return;
       jobs = fresh;
       if (jobs.length > 0) {
-        persistPatch({ jobs: { ...(runRef.current?.jobs ?? {}), [g]: jobs } });
+        persistPatch({ jobs: { ...(runRef.current?.jobs ?? {}), [key]: jobs } });
       }
     }
 
-    setPending((prev) => ({ ...prev, [g]: jobs!.length }));
+    setPending((prev) => ({ ...prev, [key]: jobs!.length }));
     if (jobs!.length === 0) {
-      if (firstError) setImgErrors((prev) => ({ ...prev, [g]: firstError }));
+      if (firstError) setImgErrors((prev) => ({ ...prev, [key]: firstError }));
       return;
     }
 
-    // Poll each job until it resolves; images stream in as they finish. The
-    // first tick is short so refresh-restored (already-complete) jobs pop in fast.
-    const pendingIds = new Set(jobs!.map((j) => j.id));
+    // Batch-poll this option's jobs until all resolve; photos stream in as they
+    // finish. First tick is short so refresh-restored jobs pop back in fast.
+    const byId = new Map(jobs!.map((j) => [j.id, j]));
+    const pendingIds = new Set(byId.keys());
     let got = 0;
     for (let attempt = 0; attempt < 75 && pendingIds.size > 0; attempt++) {
       await delay(attempt === 0 ? 1200 : 4000);
       if (runId.current !== myRun) return;
-      for (const job of jobs!) {
-        if (!pendingIds.has(job.id)) continue;
-        try {
-          const p = await postJson<PollResponse>("/api/render/poll", { id: job.id });
-          if (p.status === "completed" && p.src) {
-            pendingIds.delete(job.id);
-            got += 1;
-            const src = p.src;
-            setImages((prev) => ({
-              ...prev,
-              [g]: [...(prev[g] ?? []), { kind: job.kind, src, alt: job.alt }],
-            }));
-            setPending((prev) => ({ ...prev, [g]: Math.max(0, (prev[g] ?? 1) - 1) }));
-          } else if (p.status === "failed") {
-            pendingIds.delete(job.id);
-            if (!firstError) firstError = p.error || "Image generation failed.";
-            setPending((prev) => ({ ...prev, [g]: Math.max(0, (prev[g] ?? 1) - 1) }));
-          }
-        } catch {
-          /* transient poll error — retry on the next attempt */
+      let results: Record<string, PollStatus>;
+      try {
+        const resp = await postJson<PollResponse>("/api/render/poll", {
+          ids: [...pendingIds],
+        });
+        results = resp.results;
+      } catch {
+        continue; // transient poll error — retry on the next tick
+      }
+      if (runId.current !== myRun) return;
+      for (const [id, p] of Object.entries(results)) {
+        const job = byId.get(id);
+        if (!job || !pendingIds.has(id)) continue;
+        if (p.status === "completed" && p.src) {
+          pendingIds.delete(id);
+          got += 1;
+          const src = p.src;
+          setImages((prev) => ({
+            ...prev,
+            [key]: [...(prev[key] ?? []), { kind: job.kind, src, alt: job.alt }],
+          }));
+          setPending((prev) => ({ ...prev, [key]: Math.max(0, (prev[key] ?? 1) - 1) }));
+        } else if (p.status === "failed") {
+          pendingIds.delete(id);
+          if (!firstError) firstError = p.error || "Image generation failed.";
+          setPending((prev) => ({ ...prev, [key]: Math.max(0, (prev[key] ?? 1) - 1) }));
         }
       }
     }
     if (runId.current !== myRun) return;
-    setPending((prev) => ({ ...prev, [g]: 0 }));
+    setPending((prev) => ({ ...prev, [key]: 0 }));
     if (got === 0 && firstError) {
-      setImgErrors((prev) => ({ ...prev, [g]: firstError }));
+      setImgErrors((prev) => ({ ...prev, [key]: firstError }));
     }
   }
 
-  // Re-attempt image generation for the current garment after a failure. Drops
-  // any persisted jobs for it so we truly regenerate rather than re-poll dead ids.
+  // Re-attempt image generation for the currently selected option. Drops its
+  // persisted jobs so we truly regenerate rather than re-poll dead ids.
   function retryImages() {
     if (!data) return;
     const g = garment;
-    const design = designs[g]?.design;
+    const opt = selOpt[g] ?? 0;
+    const design = designs[g]?.options[opt];
     if (!design) return;
-    startedImages.current.delete(g);
-    if (runRef.current?.jobs?.[g]) {
+    const key = imgKey(g, opt);
+    startedImages.current.delete(key);
+    if (runRef.current?.jobs?.[key]) {
       const nextJobs = { ...runRef.current.jobs };
-      delete nextJobs[g];
+      delete nextJobs[key];
       persistPatch({ jobs: nextJobs });
     }
-    setImgErrors((prev) => ({ ...prev, [g]: undefined }));
+    setImgErrors((prev) => ({ ...prev, [key]: undefined }));
     setImages((prev) => {
       const next = { ...prev };
-      delete next[g];
+      delete next[key];
       return next;
     });
-    void ensureImages(g, design, data.style.vibeName);
+    void ensureImages(g, opt, design, data.style.vibeName);
   }
 
   async function runDesign(resp: AnalyzeResponse, g: GarmentType, cache: typeof designs) {
-    let design = cache[g]?.design;
+    let set = cache[g];
     setDesignErrors((prev) => ({ ...prev, [g]: undefined }));
-    if (!cache[g]) {
+    if (!set) {
       setDesigning(true);
       try {
         const d = await postJson<DesignResponse>("/api/design", {
@@ -246,7 +263,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
         });
         setDesigns((prev) => ({ ...prev, [g]: d }));
         persistPatch({ designs: { ...(runRef.current?.designs ?? {}), [g]: d } });
-        design = d.design;
+        set = d;
       } catch (e) {
         // No silent failure: surface the design error with a retry.
         setDesignErrors((prev) => ({
@@ -260,7 +277,10 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
       setDesigning(false);
     }
     setGarment(g);
-    if (design) void ensureImages(g, design, resp.style.vibeName);
+    // Kick off the full photo set for every option; each is cached per option.
+    set.options.forEach((design, idx) => {
+      void ensureImages(g, idx, design, resp.style.vibeName);
+    });
   }
 
   // Re-hydrate a saved run after a refresh: restore persona + designs instantly,
@@ -280,9 +300,11 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setAnalyzeError(null);
     setData(null);
     setDesigns({});
+    setSelOpt({});
     setImages({});
     setPending({});
     setImgErrors({});
+    setDesignErrors({});
     startedImages.current.clear();
     runId.current += 1;
     setOrder(null);
@@ -291,7 +313,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
       const resp = await postJson<AnalyzeResponse>("/api/analyze", { handle });
       setData(resp);
       runRef.current = {
-        v: 1,
+        v: 2,
         handle,
         savedAt: Date.now(),
         data: resp,
@@ -327,9 +349,17 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     void runDesign(data, g, designs);
   }
 
+  function selectOption(idx: number) {
+    if (idx === (selOpt[garment] ?? 0)) return;
+    setOrder(null);
+    setOrderError(null);
+    setSelOpt((prev) => ({ ...prev, [garment]: idx }));
+  }
+
   async function placeOrder(size: string) {
-    const current = designs[garment];
-    if (!current || !data) return;
+    const opt = selOpt[garment] ?? 0;
+    const design = designs[garment]?.options[opt];
+    if (!design || !data) return;
     setOrdering(true);
     setOrderError(null);
     try {
@@ -337,7 +367,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
         handle: data.profile.handle,
         garment,
         size,
-        design: current.design,
+        design,
       });
       setOrder(conf);
     } catch (e) {
@@ -389,6 +419,9 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
 
   // ready
   const current = data ? designs[garment] : undefined;
+  const optIdx = selOpt[garment] ?? 0;
+  const currentDesign = current?.options[optIdx];
+  const currentKey = imgKey(garment, optIdx);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -429,19 +462,35 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
             </div>
           )}
 
+          {current && current.options.length > 0 && (
+            <div className="card p-6">
+              <p className="eyebrow mb-4">Choose your design</p>
+              <OptionPicker
+                options={current.options}
+                selected={optIdx}
+                thumbs={current.options.map((_, i) => images[imgKey(garment, i)]?.[0])}
+                rendering={current.options.map(
+                  (_, i) =>
+                    (pending[imgKey(garment, i)] ?? 0) > 0 &&
+                    (images[imgKey(garment, i)]?.length ?? 0) === 0,
+                )}
+                onSelect={selectOption}
+              />
+            </div>
+          )}
+
           <DesignGallery
-            key={garment}
-            svg={current?.mockupSvg ?? ""}
-            images={images[garment] ?? []}
-            pending={pending[garment] ?? 0}
+            key={currentKey}
+            images={images[currentKey] ?? []}
+            pending={pending[currentKey] ?? 0}
             designing={designing}
-            error={imgErrors[garment] ?? null}
+            error={imgErrors[currentKey] ?? null}
             onRetry={retryImages}
           />
 
-          {current && (
+          {currentDesign && current && (
             <div className="card p-6">
-              <DesignDetails design={current.design} engine={current.engine} />
+              <DesignDetails design={currentDesign} engine={current.engine} />
             </div>
           )}
 

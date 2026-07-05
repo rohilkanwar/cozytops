@@ -4,63 +4,32 @@ import { Hero } from "@/components/Hero";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Footer } from "@/components/Footer";
 import { HandleInput } from "@/components/HandleInput";
-import { renderMockup } from "@/lib/design/mockup";
-import type { DesignBrief } from "@/lib/types";
 
-// Server-rendered example mockups so the landing page shows real output.
-const HERO_BRIEF: DesignBrief = {
-  garment: "sweater",
-  title: "The Coastal Heirloom Knit",
-  story: "",
-  palette: [],
-  primaryColor: "#E7DAC4",
-  secondaryColor: "#A9C2B5",
-  accentColor: "#6E7A7C",
-  pattern: "fairisle",
-  motifs: [],
-  monogram: "SL",
-  placementNotes: "",
-  materials: "",
-  careVibe: "",
-};
-
-const SHOWCASE: { brief: DesignBrief; label: string; from: string }[] = [
+// Real generated campaign photography (no placeholder mockups) — produced by
+// the same gpt-image-2 pipeline that renders customer designs, committed as
+// static assets so the landing page costs nothing to serve.
+const SHOWCASE: { src: string; alt: string; label: string; from: string }[] = [
   {
+    src: "/landing/sweater.jpg",
+    alt: "Model wearing a clay and oatmeal Fair-Isle crewneck knit in a golden-hour garden",
     label: "The Crew Knit",
     from: "warm, earthy, hand-made energy",
-    brief: { ...HERO_BRIEF, pattern: "fairisle" },
   },
   {
+    src: "/landing/tee.jpg",
+    alt: "Model wearing a charcoal heavyweight boxy tee against raw concrete",
     label: "The Heavyweight Tee",
     from: "monochrome, utility, city-paced",
-    brief: {
-      ...HERO_BRIEF,
-      garment: "tee",
-      primaryColor: "#2E3033",
-      secondaryColor: "#4C5258",
-      accentColor: "#ECEEF0",
-      pattern: "solid",
-      monogram: "CC",
-    },
   },
   {
+    src: "/landing/jacket.jpg",
+    alt: "Model wearing a washed-indigo chore jacket among warm brick and worn wood",
     label: "The Chore Jacket",
     from: "thrifted, worn-in, vinyl-crate vibes",
-    brief: {
-      ...HERO_BRIEF,
-      garment: "jacket",
-      primaryColor: "#4A5A73",
-      secondaryColor: "#A8552F",
-      accentColor: "#E8E2D5",
-      pattern: "speckle",
-      monogram: "RD",
-    },
   },
 ];
 
 export default function HomePage() {
-  const heroSvg = renderMockup(HERO_BRIEF);
-
   return (
     <main className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-ink/10 bg-cream/85 backdrop-blur">
@@ -80,7 +49,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <Hero mockupSvg={heroSvg} />
+      <Hero />
 
       {/* The collection */}
       <section className="mx-auto max-w-6xl px-6 py-16">
@@ -98,10 +67,15 @@ export default function HomePage() {
         <div className="mt-12 grid gap-7 md:grid-cols-3">
           {SHOWCASE.map((s) => (
             <figure key={s.label} className="card overflow-hidden p-3">
-              <div
-                className="overflow-hidden rounded-cozy bg-cream"
-                dangerouslySetInnerHTML={{ __html: renderMockup(s.brief) }}
-              />
+              <div className="overflow-hidden rounded-cozy bg-cream">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={s.src}
+                  alt={s.alt}
+                  className="aspect-[4/5] w-full object-cover transition duration-500 hover:scale-[1.02]"
+                  loading="lazy"
+                />
+              </div>
               <figcaption className="px-3 py-4 text-center">
                 <p className="font-display text-xl font-semibold text-ink">{s.label}</p>
                 <p className="mt-1 text-sm italic text-ink/55">for the {s.from}</p>

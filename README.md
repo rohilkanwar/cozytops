@@ -30,9 +30,10 @@ Instagram handle ─▶ Style read ─▶ Custom design ─▶ Photos ─▶ Ord
    affinities, motifs, a signature detail, and explainable evidence). If no
    source is configured or the fetch/analysis fails, the API returns an
    explicit error — never a sample persona.
-3. **`/api/design`** turns that profile + a chosen garment into a manufacturable
-   `DesignBrief` (named piece, color story, pattern, monogram, personification
-   story) and renders an SVG mockup.
+3. **`/api/design`** turns that profile + a chosen garment into FOUR distinct
+   manufacturable `DesignBrief` options (named piece, color story, pattern,
+   personification story — monogram only as an occasional accent), each
+   rendered as real product + on-model photography.
 4. **`/api/checkout`** hands the design + size to a fulfillment provider.
 
 ## No silent fallbacks
@@ -93,11 +94,11 @@ npm run lint                 # lint
 ```
 src/
   app/
-    page.tsx                 Landing page (server-rendered example mockups)
+    page.tsx                 Landing page (real generated campaign photos)
     create/page.tsx          The experience (reads ?handle=)
     api/
       analyze/route.ts       handle  -> InstagramProfile + StyleProfile
-      design/route.ts        style   -> DesignBrief + SVG mockup
+      design/route.ts        style   -> 4 DesignBrief options
       checkout/route.ts      design  -> OrderConfirmation
   components/
     create/                  The end-to-end client experience + sub-views
@@ -105,7 +106,7 @@ src/
   lib/
     instagram/               Provider interface, demo personas, graph/apify
     analysis/                GPT vision style analyzer (+ lexicon of vibe seeds)
-    design/                  GPT design generator, async image pipeline, SVG mockup
+    design/                  GPT design generator (4 options), async image pipeline
     fulfillment/             Catalog + order orchestration (demo/printful/shopify)
     openai.ts, config.ts, types.ts
 ```
@@ -116,9 +117,8 @@ src/
   fetches and sends them to GPT as image blocks for genuine visual analysis;
   the engine badge shows whether vision or text-only analysis ran.
 - **New garments:** add to `CATALOG` (`lib/fulfillment`), `GARMENTS`
-  (`components/garmentMeta.ts`), and a silhouette in `lib/design/mockup.ts`.
-- **Image-gen mockups:** swap `renderMockup()` for a call to an
-  image-generation model; the call site and types stay the same.
+  (`components/garmentMeta.ts`), and a garment description in
+  `lib/design/imagegen.ts`.
 
 ## Deploy
 

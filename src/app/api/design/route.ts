@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { generateDesign } from "@/lib/design/generator";
-import { renderMockup } from "@/lib/design/mockup";
+import { generateDesignOptions } from "@/lib/design/generator";
 import type { DesignResponse, StyleProfile } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -41,16 +40,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { design, engine } = await generateDesign(
+    const { options, engine } = await generateDesignOptions(
       parsed.style as StyleProfile,
       parsed.garment,
       parsed.displayName,
     );
-    const payload: DesignResponse = {
-      design,
-      mockupSvg: renderMockup(design),
-      engine,
-    };
+    const payload: DesignResponse = { options, engine };
     return NextResponse.json(payload);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Design failed.";
