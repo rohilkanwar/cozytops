@@ -14,15 +14,34 @@ export const config = {
   },
 
   instagram: {
-    // No default: an unset provider fails loudly rather than silently serving
-    // sample personas. "demo" must be chosen explicitly.
-    provider: (process.env.INSTAGRAM_PROVIDER || "") as
-      | ""
-      | "demo"
-      | "graph"
-      | "apify",
-    graphToken: process.env.INSTAGRAM_GRAPH_TOKEN || "",
+    // Public-handle lookups ("type any public @handle"). No default: unset
+    // fails loudly rather than silently serving sample personas. "demo" must be
+    // chosen explicitly. (INSTAGRAM_PROVIDER kept for back-compat.)
+    publicProvider: (process.env.INSTAGRAM_PUBLIC_PROVIDER ||
+      process.env.INSTAGRAM_PROVIDER ||
+      "") as "" | "demo" | "apify",
     apifyToken: process.env.APIFY_TOKEN || "",
+
+    // OAuth self-connect ("Connect your Instagram") — reads the visitor's OWN
+    // account, private included, with their consent, via a short-lived token.
+    oauth: {
+      clientId: process.env.INSTAGRAM_CLIENT_ID || "",
+      clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || "",
+      // Must exactly match a redirect URI registered on the Meta app. When
+      // unset we derive `${origin}/api/auth/instagram/callback` at request time.
+      redirectUri: process.env.INSTAGRAM_REDIRECT_URI || "",
+      authUrl:
+        process.env.INSTAGRAM_OAUTH_AUTH_URL || "https://www.instagram.com/oauth/authorize",
+      tokenUrl:
+        process.env.INSTAGRAM_OAUTH_TOKEN_URL || "https://api.instagram.com/oauth/access_token",
+      graphBase: process.env.INSTAGRAM_GRAPH_BASE || "https://graph.instagram.com",
+      scopes: process.env.INSTAGRAM_OAUTH_SCOPES || "instagram_business_basic",
+      get enabled() {
+        return Boolean(
+          process.env.INSTAGRAM_CLIENT_ID && process.env.INSTAGRAM_CLIENT_SECRET,
+        );
+      },
+    },
   },
 
   affiliate: {

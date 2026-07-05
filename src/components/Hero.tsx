@@ -1,6 +1,6 @@
 import { HandleInput } from "./HandleInput";
 
-export function Hero() {
+export function Hero({ connectEnabled = false }: { connectEnabled?: boolean }) {
   return (
     <section className="relative overflow-hidden">
       <div className="weave-texture absolute inset-0 opacity-70" aria-hidden="true" />
@@ -23,7 +23,7 @@ export function Hero() {
             atelier cuts, stitches, and ships to your door.
           </p>
           <div className="mt-8 max-w-xl">
-            <HandleInput autoFocus />
+            <HandleInput autoFocus connectEnabled={connectEnabled} />
           </div>
           <p className="mt-4 text-sm text-ink/50">
             Public profiles only, with your consent. We read your vibe, not your

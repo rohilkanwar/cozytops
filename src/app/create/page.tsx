@@ -1,16 +1,23 @@
 import { Logo } from "@/components/Logo";
 import { Footer } from "@/components/Footer";
 import { CreateExperience } from "@/components/create/CreateExperience";
+import { config } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
 export default function CreatePage({
   searchParams,
 }: {
-  searchParams: { handle?: string | string[] };
+  searchParams: {
+    handle?: string | string[];
+    connected?: string | string[];
+    connect_error?: string | string[];
+  };
 }) {
-  const raw = searchParams.handle;
-  const handle = (Array.isArray(raw) ? raw[0] : raw) ?? "";
+  const first = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v) ?? "";
+  const handle = first(searchParams.handle);
+  const connected = first(searchParams.connected) === "1";
+  const connectError = first(searchParams.connect_error) || undefined;
 
   return (
     <main className="min-h-screen">
@@ -20,7 +27,12 @@ export default function CreatePage({
         </div>
       </header>
 
-      <CreateExperience initialHandle={handle} />
+      <CreateExperience
+        initialHandle={handle}
+        initialConnected={connected}
+        connectEnabled={config.instagram.oauth.enabled}
+        connectError={connectError}
+      />
 
       <Footer />
     </main>

@@ -77,11 +77,10 @@ export function buildDemoProfile(handle: string): InstagramProfile {
 }
 
 /**
- * Resolves a handle to a profile using the configured provider. No silent
- * fallbacks: if a live source is configured and fails, the error propagates;
- * if nothing is configured, we refuse rather than serve sample data as real.
- * Demo personas exist only behind an explicit INSTAGRAM_PROVIDER=demo, and are
- * always labeled as such via the notice.
+ * Resolves a PUBLIC @handle to a profile via the configured public provider
+ * (Apify, or explicit demo). No silent fallbacks: a configured provider that
+ * fails propagates its error; nothing configured refuses rather than serving
+ * sample data as real. Private accounts use the OAuth self-connect path below.
  */
 export async function resolveInstagramProfile(
   rawHandle: string,
@@ -91,31 +90,38 @@ export async function resolveInstagramProfile(
     throw new Error("Please enter a valid Instagram handle.");
   }
 
-  const provider = config.instagram.provider;
+  const provider = config.instagram.publicProvider;
 
   if (provider === "demo") {
     return {
       profile: buildDemoProfile(handle),
-      notice: `Demo mode is explicitly enabled (INSTAGRAM_PROVIDER=demo): this is a sample persona, NOT a live read of @${handle}.`,
+      notice: `Demo mode is explicitly enabled: this is a sample persona, NOT a live read of @${handle}.`,
     };
   }
 
-  if (provider === "graph" || provider === "apify") {
+  if (provider === "apify") {
     try {
-      const profile =
-        provider === "graph"
-          ? await fetchViaGraph(handle)
-          : await fetchViaApify(handle);
-      return { profile };
+      return { profile: await fetchViaApify(handle) };
     } catch (err) {
       const reason = err instanceof Error ? err.message : "unknown error";
       throw new Error(
-        `Couldn't fetch @${handle} from Instagram via ${provider}: ${reason}`,
+        `Couldn't fetch @${handle} from Instagram: ${reason}. (Private accounts can use "Connect your Instagram" instead.)`,
       );
     }
   }
 
   throw new Error(
-    `No Instagram source is configured, so @${handle} cannot actually be analyzed. Set INSTAGRAM_PROVIDER=apify with an APIFY_TOKEN (licensed public-data vendor), or INSTAGRAM_PROVIDER=demo for clearly-labeled sample personas.`,
+    `No public Instagram source is configured, so @${handle} cannot be analyzed. Set INSTAGRAM_PUBLIC_PROVIDER=apify with an APIFY_TOKEN, or use "Connect your Instagram" to analyze your own account.`,
   );
+}
+
+/**
+ * Resolves the profile of the user who OAuth-connected their own account, using
+ * their session token. Works for their account whether public or private.
+ */
+export async function resolveConnectedProfile(
+  token: string,
+): Promise<{ profile: InstagramProfile; notice?: string }> {
+  const profile = await fetchViaGraph(token);
+  return { profile };
 }

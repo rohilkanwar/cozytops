@@ -4,6 +4,7 @@ import { Hero } from "@/components/Hero";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Footer } from "@/components/Footer";
 import { HandleInput } from "@/components/HandleInput";
+import { config } from "@/lib/config";
 
 // Real generated campaign photography (no placeholder mockups) — produced by
 // the same gpt-image-2 pipeline that renders customer designs, committed as
@@ -30,6 +31,8 @@ const SHOWCASE: { src: string; alt: string; label: string; from: string }[] = [
 ];
 
 export default function HomePage() {
+  const connectEnabled = config.instagram.oauth.enabled;
+
   return (
     <main className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-ink/10 bg-cream/85 backdrop-blur">
@@ -49,7 +52,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <Hero />
+      <Hero connectEnabled={connectEnabled} />
 
       {/* The collection */}
       <section className="mx-auto max-w-6xl px-6 py-16">
@@ -103,7 +106,7 @@ export default function HomePage() {
               design is one you love.
             </p>
             <div className="mx-auto mt-8 max-w-xl text-left">
-              <HandleInput />
+              <HandleInput connectEnabled={connectEnabled} />
             </div>
           </div>
         </div>

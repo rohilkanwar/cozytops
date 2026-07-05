@@ -1,66 +1,98 @@
-import type { InstagramProfile } from "../types";
+import type { InstagramProfile, InstagramPost } from "../types";
 import { config } from "../config";
 import { ProviderUnavailableError } from "./errors";
 
 // ---------------------------------------------------------------------------
-// Instagram Graph API path.
-//
-// IMPORTANT OPERATIONAL NOTE: The official Graph API does NOT let you fetch an
-// arbitrary public handle's media. It only returns data for accounts that have
-// authorized YOUR app (via Facebook Login / Instagram Login), i.e. the visitor
-// would connect their own account through OAuth. That is the ToS-compliant way
-// to get a user's own photos with consent.
-//
-// This stub assumes you've already obtained a user access token for the visitor
-// (e.g. stored in session after OAuth) and passed it through config. Wiring the
-// OAuth handshake itself is an app-level concern left for the real integration.
+// Instagram Graph API path — the OAuth self-connect flow. Reads the media of
+// the user who authorized our app (the /me node), which works for their own
+// account whether it is public or private. It CANNOT read anyone else's
+// account. The token is obtained per-session via oauth.ts and passed in here;
+// nothing is stored server-side.
 // ---------------------------------------------------------------------------
+
+interface GraphMe {
+  username?: string;
+  name?: string;
+  account_type?: string;
+  media_count?: number;
+}
 
 interface GraphMedia {
   id: string;
   caption?: string;
   media_type?: string;
   media_url?: string;
+  thumbnail_url?: string;
+  timestamp?: string;
+  like_count?: number;
 }
 
-export async function fetchViaGraph(handle: string): Promise<InstagramProfile> {
-  const token = config.instagram.graphToken;
+/** Reads the connected user's own profile + recent media with their token. */
+export async function fetchViaGraph(token: string): Promise<InstagramProfile> {
   if (!token) {
+    throw new ProviderUnavailableError("no Instagram access token for this session");
+  }
+  const base = config.instagram.oauth.graphBase;
+
+  const meRes = await fetch(
+    `${base}/me?fields=username,name,account_type,media_count&access_token=${encodeURIComponent(token)}`,
+  );
+  if (!meRes.ok) {
+    throw new ProviderUnavailableError(await graphError(meRes));
+  }
+  const me = (await meRes.json()) as GraphMe;
+  const handle = (me.username || "you").toLowerCase();
+
+  const fields = "id,caption,media_type,media_url,thumbnail_url,timestamp,like_count";
+  const mediaRes = await fetch(
+    `${base}/me/media?fields=${fields}&limit=12&access_token=${encodeURIComponent(token)}`,
+  );
+  if (!mediaRes.ok) {
+    throw new ProviderUnavailableError(await graphError(mediaRes));
+  }
+  const data = (await mediaRes.json()) as { data?: GraphMedia[] };
+  const media = data.data ?? [];
+
+  const posts: InstagramPost[] = media
+    .filter((m) => m.media_type === "IMAGE" || m.media_type === "CAROUSEL_ALBUM")
+    .slice(0, 12)
+    .map((m) => ({
+      id: m.id,
+      caption: m.caption ?? "",
+      hashtags: extractHashtags(m.caption ?? ""),
+      imageUrl: m.media_url ?? m.thumbnail_url,
+      // The vision analyzer describes imageUrl; empty alt until then.
+      imageAlt: "",
+      likeCount: m.like_count,
+      takenAt: m.timestamp,
+      mediaType: "image" as const,
+    }));
+
+  if (posts.length === 0) {
     throw new ProviderUnavailableError(
-      "no Graph API user token; visitor must authorize via Instagram Login",
+      "your connected account has no readable image posts to analyze",
     );
   }
 
-  // /me/media requires a user-authorized token; you cannot query other handles.
-  const fields = "id,caption,media_type,media_url,timestamp,like_count";
-  const url = `https://graph.instagram.com/me/media?fields=${fields}&access_token=${token}`;
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new ProviderUnavailableError(`Graph API responded ${res.status}`);
-  }
-  const data = (await res.json()) as { data?: GraphMedia[] };
-  const media = data.data ?? [];
-
   return {
     handle,
-    displayName: handle,
+    displayName: me.name || me.username || "You",
     bio: "",
-    postCount: media.length,
+    postCount: me.media_count ?? posts.length,
+    posts,
     source: "graph",
-    posts: media
-      .filter((m) => m.media_type === "IMAGE" || m.media_type === "CAROUSEL_ALBUM")
-      .slice(0, 12)
-      .map((m) => ({
-        id: m.id,
-        caption: m.caption ?? "",
-        hashtags: extractHashtags(m.caption ?? ""),
-        imageUrl: m.media_url,
-        // The vision analyzer will describe imageUrl; empty alt until then.
-        imageAlt: "",
-        mediaType: "image" as const,
-      })),
   };
+}
+
+async function graphError(res: Response): Promise<string> {
+  const raw = await res.text().catch(() => "");
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: string } };
+    if (parsed.error?.message) return `Instagram Graph ${res.status}: ${parsed.error.message}`;
+  } catch {
+    /* fall through */
+  }
+  return `Instagram Graph API responded ${res.status}`;
 }
 
 function extractHashtags(caption: string): string[] {

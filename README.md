@@ -50,7 +50,7 @@ always labeled as such:
 
 | Capability | Unconfigured / provider failure | Configured |
 |---|---|---|
-| Instagram data | Explicit error (`INSTAGRAM_PROVIDER` unset) or the provider's real error — never a stand-in persona | `apify` (licensed data vendor, real public posts) or `graph` (visitor's own account via OAuth). `demo` is an explicit opt-in, labeled "sample persona" |
+| Instagram data | Explicit error (nothing configured) or the provider's real error — never a stand-in persona | Public handles: `INSTAGRAM_PUBLIC_PROVIDER=apify`. Private/own: "Connect your Instagram" OAuth (`INSTAGRAM_CLIENT_ID`/`SECRET`). `demo` is an explicit opt-in, labeled "sample persona" |
 | Style analysis | Explicit error | GPT vision over the real post photos (`OPENAI_API_KEY`) |
 | Garment design | Explicit error | GPT-authored design brief |
 | Imagery | Explicit error | gpt-image-2 photorealistic product + on-model shots (async background jobs) |
@@ -61,14 +61,21 @@ always labeled as such:
 These are the "to be figured out operationally" pieces from the brief. The code
 is structured so they're swappable, and demo mode never depends on them:
 
-- **Instagram access is the real constraint.** The official Graph API only
-  returns media for accounts that have authorized *your* app via Instagram
-  Login — i.e. the visitor connects their *own* account and consents. You
-  cannot fetch an arbitrary public handle through the official API. The
-  ToS-compliant options are (a) Instagram Login for the visitor's own account,
-  or (b) a reputable, licensed data vendor for public posts, always with clear
-  disclosure + consent. `src/lib/instagram/{graph,apify}.ts` sketch both. **Do
-  not** bolt on unauthorized scraping.
+- **Instagram access is the real constraint, and there are exactly two honest
+  paths — both wired up here:**
+  - **Public handles** → a licensed data vendor (Apify) for public posts, with
+    disclosure. `INSTAGRAM_PUBLIC_PROVIDER=apify` + `APIFY_TOKEN`.
+  - **Private / own account** → **OAuth self-connect**: the visitor authorizes
+    reading *their own* account (public or private) via Instagram Login. We use
+    a short-lived token held only in an httpOnly session cookie, read `/me/media`,
+    and never persist it or touch anyone else's data. `INSTAGRAM_CLIENT_ID` +
+    `INSTAGRAM_CLIENT_SECRET` (Meta app + App Review required for production).
+    Routes: `src/app/api/auth/instagram/{login,callback,logout}`; token flow in
+    `src/lib/instagram/oauth.ts`, media read in `graph.ts`.
+
+  You cannot read an arbitrary *private* handle — that's an access control, and
+  circumventing it is unauthorized access. **Do not** bolt on unauthorized
+  scraping or bot-follow schemes.
 - **Fulfillment** is a print-on-demand / storefront integration. Printful is the
   most natural fit for one-off custom garments (upload artwork → create order
   against a variant); Shopify works as the storefront + hosted checkout. Both
@@ -111,7 +118,7 @@ src/
     create/                  The end-to-end client experience + sub-views
     Hero, HowItWorks, ...    Landing-page sections
   lib/
-    instagram/               Provider interface, demo personas, graph/apify
+    instagram/               Public (apify/demo) + OAuth self-connect (oauth/graph)
     analysis/                GPT vision style analyzer (+ lexicon of vibe seeds)
     design/                  GPT design generator (4 options), async image pipeline
     fulfillment/             Catalog + order orchestration (demo/printful/shopify)

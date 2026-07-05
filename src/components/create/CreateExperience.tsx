@@ -95,8 +95,20 @@ function saveRun(run: PersistedRun) {
   }
 }
 
-export function CreateExperience({ initialHandle }: { initialHandle: string }) {
-  const [phase, setPhase] = useState<Phase>(initialHandle ? "analyzing" : "idle");
+export function CreateExperience({
+  initialHandle,
+  initialConnected = false,
+  connectEnabled = false,
+  connectError,
+}: {
+  initialHandle: string;
+  initialConnected?: boolean;
+  connectEnabled?: boolean;
+  connectError?: string;
+}) {
+  const [phase, setPhase] = useState<Phase>(
+    initialHandle || initialConnected ? "analyzing" : "idle",
+  );
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [data, setData] = useState<AnalyzeResponse | null>(null);
 
@@ -120,6 +132,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
   const [imgErrors, setImgErrors] = useState<Record<string, string | undefined>>({});
 
   const lastHandle = useRef<string | null>(null);
+  const connectedStarted = useRef(false);
   const startedImages = useRef<Set<string>>(new Set());
   const startedShop = useRef<Set<GarmentType>>(new Set());
   const runId = useRef(0);
@@ -354,7 +367,8 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     void runDesign(cached.data, "sweater", cached.designs, cached.selOpt?.sweater ?? 0);
   }
 
-  async function runAnalyze(handle: string) {
+  // Analyze either a typed public handle or the OAuth-connected own account.
+  async function runAnalyze(source: { handle: string } | { connected: true }) {
     setPhase("analyzing");
     setAnalyzeError(null);
     setData(null);
@@ -372,8 +386,13 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     setOrder(null);
     setOrderError(null);
     try {
-      const resp = await postJson<AnalyzeResponse>("/api/analyze", { handle });
+      const resp = await postJson<AnalyzeResponse>(
+        "/api/analyze",
+        "connected" in source ? { connected: true } : { handle: source.handle },
+      );
       setData(resp);
+      const handle = resp.profile.handle;
+      lastHandle.current = handle;
       runRef.current = {
         v: 3,
         handle,
@@ -385,6 +404,11 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
         vibe: resp.style.vibeName,
       };
       saveRun(runRef.current);
+      // After a connect, rewrite the URL to the resolved handle so a refresh
+      // re-hydrates from the cached run (no re-analysis, no token needed).
+      if ("connected" in source && typeof window !== "undefined") {
+        window.history.replaceState(null, "", `/create?handle=${encodeURIComponent(handle)}`);
+      }
       setGarment("sweater");
       setPhase("ready");
       void runDesign(resp, "sweater", {}, 0);
@@ -394,16 +418,21 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
     }
   }
 
-  // Kick off (or re-run) analysis whenever the handle in the URL changes.
+  // Kick off analysis: the connected own-account flow, or a handle from the URL.
   useEffect(() => {
+    if (initialConnected && !connectedStarted.current) {
+      connectedStarted.current = true;
+      void runAnalyze({ connected: true });
+      return;
+    }
     if (initialHandle && initialHandle !== lastHandle.current) {
       lastHandle.current = initialHandle;
       const cached = loadRun(initialHandle);
       if (cached) restoreRun(cached);
-      else void runAnalyze(initialHandle);
+      else void runAnalyze({ handle: initialHandle });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialHandle]);
+  }, [initialHandle, initialConnected]);
 
   function selectGarment(g: GarmentType) {
     if (!data || g === garment) return;
@@ -458,17 +487,22 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
           Let us design your piece
         </h1>
         <p className="mt-3 text-ink/65">
-          Offer a public Instagram handle to begin.
+          Offer a public Instagram handle{connectEnabled ? ", or connect your own account," : ""} to begin.
         </p>
+        {connectError && (
+          <p className="mx-auto mt-6 max-w-md rounded-cozy border-l-2 border-burgundy/40 bg-burgundy/[0.04] px-4 py-2.5 text-sm text-burgundy">
+            {connectError}
+          </p>
+        )}
         <div className="mt-8 text-left">
-          <HandleInput autoFocus />
+          <HandleInput autoFocus connectEnabled={connectEnabled} />
         </div>
       </div>
     );
   }
 
   if (phase === "analyzing") {
-    return <AnalyzingView handle={initialHandle} />;
+    return <AnalyzingView handle={initialConnected && !initialHandle ? "your Instagram" : initialHandle} />;
   }
 
   if (phase === "error") {
@@ -481,7 +515,7 @@ export function CreateExperience({ initialHandle }: { initialHandle: string }) {
         </h1>
         <p className="mt-3 text-ink/65">{analyzeError}</p>
         <div className="mt-8 text-left">
-          <HandleInput autoFocus />
+          <HandleInput autoFocus connectEnabled={connectEnabled} />
         </div>
       </div>
     );
